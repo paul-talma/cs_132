@@ -1,0 +1,126 @@
+<div id="readme" class="readme blob instapaper_body">
+    <article class="markdown-body entry-content" itemprop="text"><h1><a id="user-content-cs132-submission-requirements" class="anchor" aria-hidden="true" href="#cs132-submission-requirements"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>CS132: Submission Requirements</h1>
+<p>All submissions to CS132 needs to be a single Tar file that follow a set of
+requirements:</p>
+<ol>
+<li>
+<p>It MUST have your UID as name; example: <code>123456789.tar</code>.</p>
+</li>
+<li>
+<p>It MUST contain ONLY and ALL the source code and used to compile
+your program. The files should be directly compressed into the tar. You should not compress the folder containing the tar files. Hence, the tar file structure should look like this:</p>
+<pre><code>$ tar -vtf 123456789.tar
+&lt;main-class&gt;.java
+other/packages/Used.java
+other/packages/My.java
+</code></pre>
+</li>
+<li>
+<p>Its contents MUST be able to build, and get a valid score with the <b> pregrade </b> command (explained below).
+</li>
+<li>
+<p>The content of the folder is tested using <code>Java SE 1.8.0_101</code> ONLY. Features from Java 9 and up will NOT compile on the server and will result in a score of 0.</p>
+</li>
+</ol>
+<p>Notes for Windows Users: The commands described above should work on any of the
+UNIX SEAS machines that is available to you. If in doubt ask your TA.</p>
+<h2><a id="user-content-testing-and-feedback" class="anchor" aria-hidden="true" href="#testing-and-feedback"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Testing and feedback</h2>
+<p>To make everything easier for you we have created this automatic tester,
+packager, and pregrader. To use this helper tool, you can write your
+code in <code>src/main/java</code>, and any unit tests you want in <code>src/test/java</code>.</p>
+<ol>
+<li>
+<p>First of download and install
+<a href="https://docs.gradle.org/current/userguide/installation.html" rel="nofollow">gradle</a>.</p>
+</li>
+<li>
+<p>change <code>MY_UID</code> to your UID in <code>gradle.properties</code>, and the
+<code>homework</code> variable to the current homework (e.g., <code>hw1</code>).</p>
+</li>
+<li>
+<p>make sure your main class matches the expected main class for the
+assignment. See <code>mainclass</code> in <code>build.gradle</code>.</p>
+</li>
+<li>
+<p>build, and unit-test the code using <code>gradle test</code>.</p>
+</li>
+<!--
+<li>
+ The build/distributions file is putting the submission in a folder and that doesn't work  <p>your submission file is in <code>build/distributions/&lt;your-uid&gt;.tar</code></p> 
+</li>
+-->
+</ol>
+<p>You can run the code directly using the <code>run</code> task. Examples are available in the 
+	testcases folder. For example, to run against
+the first testcase for the first homework:</p>
+<pre><code>gradle run &lt; testcases/hw1/test01
+</code></pre>
+<p>Finally to build your project and run against all publicly available tests
+simply run <code>gradle pregrade</code>. The pregrader is the grader that we will use to
+grade you, but more test-cases will be added in the final grading. Your score will be the ratio of test cases passed, except for HW-4 (Register Allocation) which is explained in detail below.</p>
+<p><strong>NOTE</strong>: The current pregrade script uses bash, so you might have some
+problems using Windows.</p>
+
+
+<h2><a id="user-content-javacc-and-jtb" class="anchor" aria-hidden="true" href="#javacc-and-jtb"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Javadoc (for HW 2 onwards)</h2>
+<p> Open up the file <code>javadoc/index.html</code> using a browser to access the Javadoc of the API. This gives you the list of AST classes and visitors available for you to use. 
+For HW2, you will use cs132.minijar package entries, for HWs 3, 4 and 5 you will additionally use the cs132.IR packages.
+You will typically extend one of the available visitors and override the visit methods for each of the AST classes to translate them.</p>
+
+
+<h2><a id="user-content-javacc-and-jtb" class="anchor" aria-hidden="true" href="#javacc-and-jtb"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Using the Interpreters to debug (for HWs 3,4,5)</h2>
+<p>For these 3 HWs your code will perform a translation and output a program. The output will be in Sparrow for HW3, in SparrowV for HW4 and RiscV for HW5. To test if your output is a valid program, you can run the provided interpreter on your program output. Here is an example of how you could run the output of your program on the interpreter.</p>
+<pre><code>
+	gradle run &lt; testcases/hw3/test1.java &gt; out.sparrow
+	java -jar misc/sparrow.jar s < out.sparrow
+</code></pre>
+<p>Before running the sparrow.jar on out.sparrow, remember to clear the extra lines printed by gradle at the beginning and end of out.sparrow. </p>
+
+<p>Here are corresponding commands for SparrowV and RiscV</p>
+<pre><code>
+	java -jar misc/sparrow.jar sv < sparrowVcode.sparrowv
+	java -jar misc/venus.jar < riscVcode.txt
+</code></pre>
+
+
+<h2><a id="user-content-javacc-and-jtb" class="anchor" aria-hidden="true" href="#javacc-and-jtb"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Homework 4 (Register Allocation) Grading</h2>
+<p>This HW will have a different grading scheme. Simply passing all the test cases will give you only 20 percent of the grade (this is what will be tested by 'gradle pregrade' command). Hence getting a full score in 'gradle pregrade' will typically only give you a score close to 20 percent on the server.
+To get a higher score on the server, you need to optimize the number of loads+stores to the stack. This can be achieved by using some form of register allocation to keep the local and parameter variables in registers instead of storing to and loading from the stack. The fewer the loads/stores to the stack, the higher your grade will be. To get a full score, your loads+stores should be below a particular threshold.</p>
+
+<p>Modifying the number of heap accesses from the original program will give a score of 0. If a test case crashes when executed by the interpreter, that test case will get a score of 0.</p>
+
+<p>To measure the number of stack/heap accesses of the program output by your compiler run the following. </p>
+<pre><code>
+	gradle run &lt; testcases/hw4/test1.sparrow &gt; out.sparrowv
+	java -jar misc/sparrow.jar sv stats < out.sparrowv
+</code></pre>
+
+<p>Before running the sparrow.jar on out.sparrow, remember to clear the extra lines printed by gradle at the beginning and end of out.sparrowv</p>
+
+<p>These stats will help you confirm whether your optimization/register-allocation actually reduced the number of loads/stores on the test program.</p>
+
+
+
+<h2><a id="user-content-javacc-and-jtb" class="anchor" aria-hidden="true" href="#javacc-and-jtb"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Running the Homework without Gradle (not recommended)</h2>
+
+<p>Create a folder to store the class files.</p>
+<pre><code>mkdir classes</code></pre>
+
+<p>To compile your code
+use either one of the following commands: the first command works only if you have no nested folders. The second command works for nested folders as well</p>
+<pre><code>javac -cp lib/cs132.jar -d classes src/main/java/*.java</code></pre>
+<pre><code>javac -cp lib/cs132.jar -d classes $(find src/main/java/* | grep .java)</code></pre>
+
+<p>To test a single input</p>
+<pre><code>java -cp classes:lib/cs132.jar Typecheck < testcases/hw2/Basic-error.java</code></pre>
+
+<p>To generate your tar file</p>
+<pre><code>cd src/main/java</code></pre>
+<pre><code>tar -czvf 000000000.tar *</code></pre>
+
+<p>To run pregrade</p>
+<pre><code>mv src/main/java/000000000.tar .</code></pre>
+<pre><code>sh grade.sh hw2 . testcases/hw2 000000000.tar</code></pre>
+
+</article>
+  </div>

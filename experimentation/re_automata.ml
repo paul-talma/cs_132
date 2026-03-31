@@ -43,7 +43,24 @@ type re =
   | Concat of re * re
   | Star of re
 
+let merge_states nfa1 nfa2 =
+  List.init (List.length nfa1.states + List.length nfa2.states) Fun.id
+;;
+
+let merge_accepting nfa1 nfa2 =
+  nfa1.accepting @ List.map (( + ) (List.length nfa1.states)) nfa2.accepting
+;;
+
+let merge_delta nfa1 nfa2 =
+  let offset = List.length nfa1.states in
+  let new_map =
+    TransMap.fold (fun (i, c) d m -> TransMap.add (i + offset, c) d m) nfa2 TransMap.empty
+  in
+  TransMap.union (fun _ v _ -> v) nfa1.delta nfa2.delta
+;;
+
 let union nfa1 nfa2 = None
+
 (* 
        rename states in nfa2
        merge states
