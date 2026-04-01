@@ -74,12 +74,11 @@ public class Lexer {
 
     private void skipWhitespace() {
         if (isAtEnd()) return;
-
-        char currChar = source.charAt(charPtr);
         while (charPtr < sourceLength
-                && (currChar == ' ' || currChar == '\n' || currChar == '\t')) {
+                && (source.charAt(charPtr) == ' '
+                        || source.charAt(charPtr) == '\n'
+                        || source.charAt(charPtr) == '\t')) {
             ++charPtr;
-            currChar = source.charAt(charPtr);
         }
     }
 
