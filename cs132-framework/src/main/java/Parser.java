@@ -84,18 +84,8 @@ public class Parser {
     private boolean parseL() {
         // L ::= S L
         //     | ϵ
-        boolean success = true;
-        while (success) {
-            success = success && parseS();
-        }
-        success = currToken == TokenType.RBRACE;
-        // success = success && parseS();
-        // if (success) {
-        //     success = success && parseL();
-        // } else {
-        //     success = currToken == TokenType.RBRACE;
-        // }
-        return success;
+        if (currToken == TokenType.RBRACE) return true;
+        return parseS() && parseL();
     }
 
     private boolean parseE() {
