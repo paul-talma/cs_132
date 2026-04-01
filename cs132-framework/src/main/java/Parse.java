@@ -17,19 +17,21 @@ public class Parse {
 
     public static void main(String[] args) throws IOException {
         String source = getSource();
-
-        // System.out.println("Received input:");
-        // System.out.println(source);
-
+        boolean success = true;
         Lexer lexer = new Lexer(source);
         try {
             lexer.tokenize();
         } catch (LexerException e) {
-            System.out.println(e);
-            return;
+            success = false;
         }
-        System.out.println("Successfully tokenized input!");
-        System.out.println(lexer.getTokenList());
-        // Parser parser = new Parser(lexer.getTokenList());
+        if (success) {
+            Parser parser = new Parser(lexer.getTokenList());
+            try {
+                success = parser.parse();
+            } catch (ParserError e) {
+                success = false;
+            }
+        }
+        System.out.println(success ? "Program parsed successfully" : "Parse error");
     }
 }

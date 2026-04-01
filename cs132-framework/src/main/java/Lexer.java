@@ -13,19 +13,6 @@ public class Lexer {
     private int sourceLength;
     private int charPtr = 0;
     private List<TokenType> tokenList = new ArrayList<TokenType>();
-    // private TokenType currentToken;
-    // private Scanner scannerLBRACE = new Scanner(TokenType.LBRACE);
-    // private Scanner scannerRBRACE = new Scanner(TokenType.RBRACE);
-    // private Scanner scannerLPAR = new Scanner(TokenType.LPAR);
-    // private Scanner scannerRPAR = new Scanner(TokenType.RPAR);
-    // private Scanner scannerPRINT = new Scanner(TokenType.PRINT);
-    // private Scanner scannerSEMI = new Scanner(TokenType.SEMI);
-    // private Scanner scannerIF = new Scanner(TokenType.IF);
-    // private Scanner scannerELSE = new Scanner(TokenType.ELSE);
-    // private Scanner scannerWHILE = new Scanner(TokenType.WHILE);
-    // private Scanner scannerTRUE = new Scanner(TokenType.TRUE);
-    // private Scanner scannerFALSE = new Scanner(TokenType.FALSE);
-    // private Scanner scannerNEG = new Scanner(TokenType.NEG);
     private List<Scanner> scanners =
             new ArrayList<Scanner>(
                     Arrays.asList(
