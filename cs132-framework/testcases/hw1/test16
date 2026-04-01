@@ -1,0 +1,1 @@
+while (true) while (false) System.out.println(true);
