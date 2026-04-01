@@ -4,7 +4,7 @@ import java.util.List;
 
 class LexerException extends RuntimeException {
     public LexerException(int pos) {
-        super(String.format("Lexer error: could not consume token starting at position %d", pos));
+        super(String.format("could not consume token starting at position %d", pos));
     }
 }
 
@@ -12,7 +12,6 @@ public class Lexer {
     private String source;
     private int sourceLength;
     private int charPtr = 0;
-    private char currChar;
     private List<TokenType> tokenList = new ArrayList<TokenType>();
     // private TokenType currentToken;
     // private Scanner scannerLBRACE = new Scanner(TokenType.LBRACE);
@@ -47,7 +46,6 @@ public class Lexer {
     public Lexer(String source) {
         this.source = source;
         this.sourceLength = this.source.length();
-        this.currChar = source.charAt(charPtr);
     }
 
     private String tokenTypeToStringLiteral(TokenType t) {
@@ -76,8 +74,11 @@ public class Lexer {
                 return "false";
             case NEG:
                 return "!";
+            case EOF:
+                return "\0";
+            default:
+                return "error";
         }
-        return "";
     }
 
     private boolean isAtEnd() {
@@ -85,11 +86,12 @@ public class Lexer {
     }
 
     private void skipWhitespace() {
-        while (currChar == ' ' || currChar == '\n' || currChar == '\t') {
+        if (isAtEnd()) return;
+
+        char currChar = source.charAt(charPtr);
+        while (charPtr < sourceLength
+                && (currChar == ' ' || currChar == '\n' || currChar == '\t')) {
             ++charPtr;
-            if (isAtEnd()) {
-                return;
-            }
             currChar = source.charAt(charPtr);
         }
     }
@@ -112,6 +114,7 @@ public class Lexer {
         while (!isAtEnd()) {
             consumeToken();
         }
+        tokenList.add(TokenType.EOF);
     }
 
     public List<TokenType> getTokenList() {
@@ -138,7 +141,7 @@ public class Lexer {
             int pos = charPtr; // temp poiner
             for (int i = 0; i < maxLen; ++i) {
                 // check bounds + character match
-                if (pos >= sourceLength || target.charAt(pos) != source.charAt(pos)) {
+                if (pos >= sourceLength || target.charAt(i) != source.charAt(pos)) {
                     return false;
                 }
                 ++pos;
@@ -149,7 +152,6 @@ public class Lexer {
             // update current token
             // add token to token list
             charPtr = pos;
-            // currentToken = token;
             tokenList.add(token);
             return true;
         }

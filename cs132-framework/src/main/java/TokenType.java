@@ -11,6 +11,6 @@ public enum TokenType {
     TRUE,
     FALSE,
     NEG,
-    // EOF,
+    EOF,
     // UNK,
 }
