@@ -58,7 +58,7 @@ test {
 
 task run (type: JavaExec) { 
     standardInput = System.in
-    main = mainClass()
+    mainClass = mainClass()
     classpath = sourceSets.main.runtimeClasspath
 }
 
