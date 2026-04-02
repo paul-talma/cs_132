@@ -30,10 +30,14 @@ public class Parser {
         }
     }
 
+    private TokenType nextToken() {
+        ++tokenPtr;
+        return tokenList.get(tokenPtr);
+    }
+
     private void eat(TokenType token) throws ParserError {
         if (currToken == token) {
-            ++tokenPtr;
-            currToken = tokenList.get(tokenPtr);
+            currToken = nextToken();
         } else {
             throw new ParserError(token, currToken);
         }
