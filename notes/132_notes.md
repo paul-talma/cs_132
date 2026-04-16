@@ -91,3 +91,220 @@ Note:
 - LL(1) -> not ambiguous
 - Some languages are not LL(1)
 - An eps-free grammar where each productions for an A start with distinct symbols is a _simple_ LL(1) grammar
+
+# Lecture 2.2 - Type Checking
+
+```
+ h1 h2 h3 ... hn
+------------------
+   conclusion
+```
+
+Interpreted as `(h1 & h2 & ... & hn) ==> conclusion`
+
+## Expressions
+
+Consider `(3 + 5) + 7`
+
+Bottom-up type checking: 3, 5 primitively typed as `int`.
+`3 + 5` derived as `int`.
+`7` primitively typed as `int`.
+`(3 + 5) + 7` derived as int.
+
+Rule representation:
+
+`t ::= int | boolean`
+
+```
+ a : int, b : int
+--------------------
+    a + b : int
+
+e : t  ~ "e has type t"
+```
+
+Note: type checking is Turing-complete in general; we want linear-time type checking ==> some valid programs won't type check.
+
+Side-conditions:
+
+```
+a : t      b : s
+-----------------  (t = int, s = int)
+  a + b : int
+```
+
+Expressions of the form `a : t` represent (recursive) calls to the type checker.
+Expressions of the form `t = int` are "side-checks."
+
+```java
+class Type {
+    ...
+}
+
+class TypeChecker extends DepthFirstVisitor {
+    ...
+    Type visit(IntegerConstant n) {
+        return Type(int);
+    }
+    Type visit(Plus n) {
+        Type t1 = n.e1.accept(this); // recursive calls
+        Type t2 = n.e2.accept(this);
+        if (t1 != Type(int) || t2 != Type(int)) {
+            // throw Type Exception
+        }
+        return Type(int);
+    }
+}
+```
+
+```
+e ::= new int [e] | e1[e2] | e1.length
+
+  e1 : int[]    e2 : int
+---------------------------
+      e1[e2] : int[]
+
+
+      e : int[]
+---------------------
+  e.length() : int
+
+
+```
+
+(can generalize over `int`).
+
+## Identifiers
+
+```
+id ::= field | parameter | local variable
+```
+
+Local declarations maintained in a symbol table/type environment, usually denoted `A`.
+
+`A`:
+| id | type |
+| --- | ------- |
+| x | int |
+| y | boolean |
+| ... | ... |
+
+## Judgements
+
+A |- e : t ~ in type env A, e has type t
+
+```
+
+  A |- e1 : int[]      A |- e2 : int
+---------------------------------------
+        A |- e1.length() : int
+
+
+  A |- id : A(id)
+
+
+```
+
+## Parameters
+
+Note: cannot redeclare parameters or variables (all parameters and local variables must be distinct).
+
+## Statements
+
+```
+A |- s
+```
+
+- Note that statements don't return anything (in MiniJava) and so no need to assign type to `s`
+
+e.g.
+
+```
+  A(x) = t1    A |- e : t2
+---------------------------- (t1 = t2)
+       A |- (x = e)
+```
+
+```java
+class TypeChecker extends DepthFirstVisitor {
+    void visit(AssignentStatement n, TypeEnv A) {
+        Type t1 = A.lookup(n.x);
+        Type t2 = n.e.visit(this);
+        if (t1 != t2) {
+            // throw type error
+        }
+
+    }
+}
+```
+
+# Lecture 3.1
+
+```java
+class X {
+    t x
+    ...
+
+    u m (t1 a1, ...) {
+        u1 b1
+        ...
+        return e;
+    }
+}
+```
+
+type checking `m`:
+
+```
+A = fields(C)
+    parameters(m)
+    localVars(m)
+```
+
+# Lecture 3.2
+
+Compiling factorial in minijava:
+
+```java
+class Factorial {
+    public static void main(String[] a) {
+        System.out.println(new Fac().ComputeFac(6));
+    }
+}
+
+class Fac {
+    public int ComputeFac(int num) {
+        int num_aux;
+        if (num < 1) {
+            num_aux = 1;
+        } else {
+            num_aux = num * (this.ComputeFac(num-1));
+        }
+        return num_aux;
+    }
+}
+```
+
+Compiles to Sparrow IR.
+
+## Sparrow
+
+No classes: function names build in class provenance.
+
+Label-and-goto language.
+
+### Sparrow grammar
+
+Very few constants allowed
+
+### Sparrow execution model
+
+Environment: represents parameters and local variables by mapping identifiers to values
+
+Program state: (p, H, b\*, E, b)
+
+- p: program
+- H: heap
+- b\*: body of currently executing function
+- E: environment
+- b: current block (b is block-to-go)
