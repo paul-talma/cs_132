@@ -30,10 +30,14 @@ public class Parser {
         }
     }
 
+    private TokenType nextToken() {
+        ++tokenPtr;
+        return tokenList.get(tokenPtr);
+    }
+
     private void eat(TokenType token) throws ParserError {
         if (currToken == token) {
-            ++tokenPtr;
-            currToken = tokenList.get(tokenPtr);
+            currToken = nextToken();
         } else {
             throw new ParserError(token, currToken);
         }
@@ -84,18 +88,8 @@ public class Parser {
     private boolean parseL() {
         // L ::= S L
         //     | ϵ
-        boolean success = true;
-        while (success) {
-            success = success && parseS();
-        }
-        success = currToken == TokenType.RBRACE;
-        // success = success && parseS();
-        // if (success) {
-        //     success = success && parseL();
-        // } else {
-        //     success = currToken == TokenType.RBRACE;
-        // }
-        return success;
+        if (currToken == TokenType.RBRACE) return true;
+        return parseS() && parseL();
     }
 
     private boolean parseE() {
