@@ -1,12 +1,8 @@
+package hw1;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-class LexerException extends RuntimeException {
-    public LexerException(int pos) {
-        super(String.format("could not consume token starting at position %d", pos));
-    }
-}
 
 public class Lexer {
     private String source;

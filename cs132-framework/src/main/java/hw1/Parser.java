@@ -1,3 +1,5 @@
+package hw1;
+
 import java.util.List;
 
 // grammar:
@@ -11,12 +13,6 @@ import java.util.List;
 // E ::= true
 //     | false
 //     | ! E
-
-class ParserError extends RuntimeException {
-    ParserError(TokenType token, TokenType currToken) {
-        super(String.format("expecting token of type %s but got %s", token, currToken));
-    }
-}
 
 public class Parser {
     private List<TokenType> tokenList;

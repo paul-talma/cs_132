@@ -1,3 +1,5 @@
+package hw1;
+
 public enum TokenType {
     LBRACE,
     RBRACE,

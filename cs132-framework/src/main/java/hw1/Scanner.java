@@ -1,3 +1,5 @@
+package hw1;
+
 public class Scanner {
     private String target;
     private int offset = 0;

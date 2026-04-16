@@ -1,5 +1,6 @@
 import java.io.IOException;
 import java.util.Scanner;
+import hw1.*;
 
 public class Parse {
     private static String getSource() {
