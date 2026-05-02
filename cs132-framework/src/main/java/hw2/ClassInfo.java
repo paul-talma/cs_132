@@ -18,6 +18,7 @@ public class ClassInfo {
     String name;
     String parent;
     boolean hasParent;
+    boolean isMain = false;
     List<String> fieldNames = new ArrayList<String>();
     Map<String, Id> fields = new HashMap<String, Id>();
     List<String> methodNames = new ArrayList<String>();
@@ -77,6 +78,10 @@ public class ClassInfo {
             }
         }
         return true;
+    }
+
+    public void setMain() {
+        isMain = true;
     }
 
 }

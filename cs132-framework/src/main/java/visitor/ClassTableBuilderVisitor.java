@@ -1,14 +1,15 @@
 package visitor;
 
-import hw2.ClassTable;
-import hw2.ClassInfo;
-import syntaxtree.*;
+import hw2.*;
+import minijava.syntaxtree.*;
+import minijava.visitor.*;
 
 // walks class declarations and records names and parents in class table
 public class ClassTableBuilderVisitor extends GJVoidDepthFirst<ClassTable> {
     public void visit(MainClass n, ClassTable classTable) {
         String className = getClassName(n);
         ClassInfo mainInfo = new ClassInfo(className);
+        mainInfo.setMain();
         classTable.addClassInfo(className, mainInfo);
     }
 
