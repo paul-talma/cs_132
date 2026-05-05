@@ -51,8 +51,6 @@ public class TypeChecker {
      */
     void phaseTwo() throws TypeException {
         augmentClassTable();
-        classTable.allFieldNamesUnique();
-        classTable.allMethodNamesUnique();
         classTable.allMethodParamsAndLocalsUnique();
         classTable.noOverloads();
     }

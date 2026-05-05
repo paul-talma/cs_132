@@ -23,8 +23,7 @@ public class ClassTableUpdaterVisitor extends GJVoidDepthFirst<ClassTable> {
 
         // add arg
         String argName = n.f11.f0.toString();
-        Id argId = new Id(argName, "String");
-        currentClass.addField(argName, argId);
+        currentClass.addField(argName, "String[]");
 
         // reset current class
         currentClass = null;
@@ -51,11 +50,10 @@ public class ClassTableUpdaterVisitor extends GJVoidDepthFirst<ClassTable> {
     public void visit(VarDeclaration n, ClassTable classTable) {
         String name = n.f1.f0.toString();
         String type = getType(n.f0);
-        Id id = new Id(name, type);
         if (currentMethod == null) {// if a class field
-            currentClass.addField(name, id);
+            currentClass.addField(name, type);
         } else {// if a method local var
-            currentMethod.addLocal(name, id);
+            currentMethod.addLocal(name, type);
         }
     }
 
@@ -83,29 +81,12 @@ public class ClassTableUpdaterVisitor extends GJVoidDepthFirst<ClassTable> {
         return n.f2.f0.toString();
     }
 
-    // visit parameters
+    // visit method parameter
     public void visit(FormalParameter n, ClassTable classTable) {
         String type = getType(n.f0);
         String name = n.f1.f0.toString();
-        Id param = new Id(name, type);
         // add param to current method declaration parameter list
-        currentMethod.addParam(name, param);
-    }
-
-    public void visit(NodeChoice n, ClassTable classTable) {
-        n.choice.accept(this, classTable);
-    }
-
-    public void visit(NodeOptional n, ClassTable classTable) {
-        if (n.present()) {
-            n.node.accept(this, classTable);
-        }
-    }
-
-    public void visit(NodeListOptional n, ClassTable classTable) {
-        for (Node node : n.nodes) {
-            node.accept(this, classTable);
-        }
+        currentMethod.addParam(name, type);
     }
 
     String getType(Type t) {

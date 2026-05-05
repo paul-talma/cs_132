@@ -1,8 +1,6 @@
 package hw2;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -19,10 +17,8 @@ public class ClassInfo {
     String parent;
     boolean hasParent;
     boolean isMain = false;
-    List<String> fieldNames = new ArrayList<String>();
-    Map<String, Id> fields = new HashMap<String, Id>();
-    List<String> methodNames = new ArrayList<String>();
-    Map<String, MethodInfo> methods = new HashMap<String, MethodInfo>();
+    Map<String, String> fields = new LinkedHashMap<String, String>();
+    Map<String, MethodInfo> methods = new LinkedHashMap<String, MethodInfo>();
 
     public ClassInfo(String name) {
         this.name = name;
@@ -40,40 +36,33 @@ public class ClassInfo {
         return name;
     }
 
-    public void addField(String fieldName, Id id) {
-        fields.put(fieldName, id);
-        fieldNames.add(fieldName);
+    public void addField(String fieldName, String type) {
+        if (fields.containsKey(fieldName))
+            throw new FieldNamesNotUniqueException(fieldName);
+        fields.put(fieldName, type);
     }
 
-    public Id getField(String fieldName) {
+    public String getFieldType(String fieldName) {
         return fields.get(fieldName);
     }
 
-    public Map<String, Id> getFields() {
+    public Map<String, String> getFields() {
         return fields;
     }
 
     public void addMethod(String methodName, MethodInfo methodInfo) {
+        if (methods.containsKey(methodName))
+            throw new MethodNamesNotUniqueException(methodName);
         methods.put(methodName, methodInfo);
-        methodNames.add(methodName);
     }
 
     public MethodInfo getMethod(String methodName) {
         return methods.get(methodName);
     }
 
-    public boolean fieldNamesUnique() {
-        return fieldNames.size() == fields.size();
-    }
-
-    public boolean methodNamesUnique() {
-        return methodNames.size() == methods.size();
-
-    }
-
     public boolean methodParamsAndLocalsUnique() {
         for (MethodInfo m : methods.values()) {
-            if (!m.paramsAndLocalsUnique()) {
+            if (!m.paramsAndLocalsDistinct()) {
                 return false;
             }
         }
@@ -84,4 +73,7 @@ public class ClassInfo {
         isMain = true;
     }
 
+    public boolean isMain() {
+        return isMain;
+    }
 }

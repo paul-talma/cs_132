@@ -11,7 +11,6 @@ import hw2.*;
 public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
     ClassTable classTable;
     ClassInfo currentClass;
-    MethodInfo currentMethod;
 
     public SymbolTableVisitor(ClassTable classTable) {
         this.classTable = classTable;
@@ -91,8 +90,6 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
                     "Method %s declared return type %s but returns %s",
                     methodName, declaredReturnType, returnExprType));
 
-        // reset current method
-        currentMethod = null;
         return "";
     }
 
@@ -124,7 +121,7 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
         if (type0.equals("boolean")) {
             return "";
         }
-        throw new TypeException(String.format("If statement requires boolean expression but got", type0));
+        throw new TypeException(String.format("If statement requires boolean expression but got %s", type0));
     }
 
     public String visit(WhileStatement n, SymbolTable symbolTable) {
@@ -133,7 +130,7 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
         if (type0.equals("boolean")) {
             return "";
         }
-        throw new TypeException(String.format("While statement requires boolean expression but got", type0));
+        throw new TypeException(String.format("While statement requires boolean expression but got %s", type0));
     }
 
     public String visit(PrintStatement n, SymbolTable symbolTable) {
@@ -241,12 +238,7 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
 
         // get actual parameter type list
         List<String> actualParameterTypes = getActualParameterTypes(n.f4, symbolTable);
-        List<String> formalParameterTypes = new ArrayList<String>();
-
-        // iterate through list then lookup in table to ensure order
-        for (String id : methodInfo.getParamIds()) {
-            formalParameterTypes.add(methodInfo.getParamType(id));
-        }
+        List<String> formalParameterTypes = new ArrayList<String>(methodInfo.getParams().values());
 
         // check number of arguments
         if (actualParameterTypes.size() != formalParameterTypes.size()) {
@@ -309,9 +301,8 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
     }
 
     public String visit(ThisExpression n, SymbolTable symbolTable) {
-        String name = currentClass.getName();
-        if (!name.equals("main")) {
-            return name;
+        if (!currentClass.isMain()) {
+            return currentClass.getName();
         }
         throw new TypeException("Cannot use \"this\" in main class");
     }
@@ -325,7 +316,11 @@ public class SymbolTableVisitor extends GJDepthFirst<String, SymbolTable> {
     }
 
     public String visit(AllocationExpression n, SymbolTable symbolTable) {
-        return n.f1.f0.accept(this, symbolTable);
+        String name = n.f1.f0.accept(this, symbolTable);
+        if (classTable.getClass(name) != null) {
+            return name;
+        }
+        throw new TypeException(String.format("Invalid class allocation: %s", name));
     }
 
     public String visit(NotExpression n, SymbolTable symbolTable) {

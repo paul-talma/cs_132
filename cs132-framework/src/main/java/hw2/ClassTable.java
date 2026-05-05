@@ -53,22 +53,6 @@ public class ClassTable {
         return detectCycle(parent, visited);
     }
 
-    void allFieldNamesUnique() throws FieldNamesNotUniqueException {
-        for (ClassInfo c : classTable.values()) {
-            if (!c.fieldNamesUnique())
-                throw new FieldNamesNotUniqueException(c.name);
-        }
-    }
-
-    void allMethodNamesUnique() throws MethodNamesNotUniqueException {
-        for (ClassInfo c : classTable.values()) {
-            if (!c.methodNamesUnique()) {
-                throw new MethodNamesNotUniqueException(c.name);
-            }
-        }
-
-    }
-
     void allMethodParamsAndLocalsUnique() throws MethodParamsAndLocalsNotUniqueException {
         for (ClassInfo c : classTable.values()) {
             if (!c.methodParamsAndLocalsUnique())
@@ -101,22 +85,33 @@ public class ClassTable {
             return false;
         }
         MethodInfo methodType1 = methodType(baseClassName, methodName);
-        return !methodType1.equals(methodType2);
+        return !methodTypesEqual(methodType1, methodType2);
     }
 
-    private Map<String, Id> updateFieldsMap(Map<String, Id> newFields,
-            Map<String, Id> inheritedFields) {
-        inheritedFields.putAll(newFields);
-        return inheritedFields;
+    boolean methodTypesEqual(MethodInfo m1, MethodInfo m2) {
+        if (!m1.returnType.equals(m2.returnType))
+            return false;
+        if (!(m1.params.size() == m2.params.size()))
+            return false;
+        List<String> m1params = new ArrayList<String>(m1.params.values());
+        List<String> m2params = new ArrayList<String>(m2.params.values());
+        for (int i = 0; i < m1params.size(); ++i) {
+            String m1ParamType = m1params.get(i);
+            String m2ParamType = m2params.get(i);
+            if (!m1ParamType.equals(m2ParamType))
+                return false;
+        }
+        return true;
     }
 
-    public Map<String, Id> fields(String className) {
+    public Map<String, String> fields(String className) {
         ClassInfo thisClass = getClass(className);
-        Map<String, Id> fieldMap = thisClass.fields;
+        Map<String, String> fieldMap = thisClass.fields;
         if (thisClass.hasParent) {
             String parentName = thisClass.parent;
-            Map<String, Id> inheritedFields = new HashMap<String, Id>(fields(parentName));
-            fieldMap = updateFieldsMap(fieldMap, inheritedFields);
+            Map<String, String> inheritedFields = new HashMap<String, String>(fields(parentName));
+            inheritedFields.putAll(thisClass.fields);
+            return inheritedFields;
         }
         return fieldMap;
     }

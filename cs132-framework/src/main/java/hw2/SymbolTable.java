@@ -21,9 +21,9 @@ public class SymbolTable {
         return table.get(id);
     }
 
-    public void update(Map<String, Id> fields) {
-        for (Id fi : fields.values()) {
-            table.put(fi.name, fi.type);
+    public void update(Map<String, String> fields) {
+        for (String fieldName : fields.keySet()) {
+            table.put(fieldName, fields.get(fieldName));
         }
     }
 
