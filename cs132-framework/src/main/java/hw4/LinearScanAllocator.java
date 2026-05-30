@@ -24,17 +24,11 @@ public class LinearScanAllocator implements Allocator {
     Active active;
     int stackOffset;
 
-    // public LinearScanAllocator(List<String> registerNames) {
-    // this.registerNames = registerNames;
-    // this.numRegisters = registerNames.size();
-    // }
-
     public LinearScanAllocator(List<Register> registers) {
         this.registers = registers;
         this.numRegisters = registers.size();
     }
 
-    @Override
     public FunctionAllocation allocate(IntervalList intervals) {
         homeOf = new HashMap<>();
         freeRegisterPool = new ArrayDeque<Register>(registers);

@@ -44,6 +44,7 @@ public class Translator extends DepthFirstVisitor {
 
     IntervalList intervalList;
     FunctionAllocation currentAllocations;
+    List<Register> usedCalleeSavedRegs; // callee-saved registers actually allocated in this function
     List<FunctionDecl> functions = new ArrayList<FunctionDecl>();
     List<Instruction> instr;
 
@@ -51,11 +52,9 @@ public class Translator extends DepthFirstVisitor {
 
     public Translator() {
         List<Register> allFreeRegisters = new ArrayList<>();
-        allFreeRegisters.addAll(calleeSavedRegisters);
         allFreeRegisters.addAll(callerSavedRegisters);
-        // TODO: revert
-        // allocator = new LinearScanAllocator(allFreeRegisters);
-        allocator = new TrivialAllocator();
+        allFreeRegisters.addAll(calleeSavedRegisters);
+        allocator = new LinearScanAllocator(allFreeRegisters);
     }
 
     public void visit(IR.syntaxtree.Program n) {
@@ -72,13 +71,34 @@ public class Translator extends DepthFirstVisitor {
         // allocation
         currentAllocations = allocator.allocate(intervalList);
 
+        // compute which callee-saved registers this function actually uses
+        usedCalleeSavedRegs = new ArrayList<>();
+        for (Home h : currentAllocations.homeOf.values()) {
+            if (!h.isRegister())
+                continue;
+            String regName = h.getReg().toString();
+            for (IR.token.Register cs : calleeSavedRegisters) {
+                if (cs.toString().equals(regName)) {
+                    usedCalleeSavedRegs.add(cs);
+                    break;
+                }
+            }
+        }
+
         // translation
         FunctionName functionName = new FunctionName(n.f1.f0.toString());
         instr = new ArrayList<>();
+        originalPos = 0;
 
-        List<IR.token.Identifier> args = getArgs(n.f3);
+        // save only the callee-saved registers actually used in this function
+        for (IR.token.Register r : usedCalleeSavedRegs) {
+            String regName = r.toString();
+            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
+            instr.add(new Move_Id_Reg(regStackId, r));
+        }
 
         // load params into their allocated registers
+        List<IR.token.Identifier> args = getArgs(n.f3);
         for (IR.token.Identifier param : args) {
             Home paramHome = currentAllocations.get(param.toString());
             if (paramHome != null && paramHome.isRegister()) {
@@ -91,29 +111,23 @@ public class Translator extends DepthFirstVisitor {
     }
 
     public Block getBlock(IR.syntaxtree.Block b) {
-        // save callee-saved registers
-        for (IR.token.Register r : calleeSavedRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
-            instr.add(new Move_Id_Reg(regStackId, r));
-        }
-        // retrieve arguments
-
         b.f0.accept(this);
 
         String returnName = b.f2.f0.toString();
         IR.token.Identifier returnId = new IR.token.Identifier(returnName);
 
-        // restore callee-saved registers
-        for (IR.token.Register r : calleeSavedRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
-            instr.add(new Move_Reg_Id(r, regStackId));
-        }
-
+        // spill return value to identifier environment before restoring callee-saved
+        // regs
         Home returnHome = currentAllocations.get(returnName);
         if (returnHome != null && returnHome.isRegister()) {
             instr.add(new Move_Id_Reg(returnId, returnHome.getReg()));
+        }
+
+        // restore only the callee-saved registers we saved at entry
+        for (IR.token.Register r : usedCalleeSavedRegs) {
+            String regName = r.toString();
+            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
+            instr.add(new Move_Reg_Id(r, regStackId));
         }
 
         return new Block(instr, returnId);
