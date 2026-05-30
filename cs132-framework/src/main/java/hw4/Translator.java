@@ -15,7 +15,7 @@ import sparrowv.*;
 
 public class Translator extends DepthFirstVisitor {
     // single allocator object for all functions
-    Allocator allocator;
+    ChordalAllocator allocator;
     List<Register> argumentRegisters = new ArrayList<>(Arrays.asList(
             new Register("a2"),
             new Register("a3"),
@@ -53,10 +53,9 @@ public class Translator extends DepthFirstVisitor {
     Program program;
 
     public Translator() {
-        List<Register> allFreeRegisters = new ArrayList<>();
-        allFreeRegisters.addAll(callerSavedRegisters);
-        allFreeRegisters.addAll(calleeSavedRegisters);
-        allocator = new LinearScanAllocator(allFreeRegisters);
+        // allocator = new LinearScanAllocator(calleeSavedRegisters,
+        // callerSavedRegisters);
+        allocator = new ChordalAllocator();
     }
 
     public void visit(IR.syntaxtree.Program n) {
@@ -65,13 +64,8 @@ public class Translator extends DepthFirstVisitor {
     }
 
     public void visit(IR.syntaxtree.FunctionDeclaration n) {
-        // liveness analysis
-        LinearScanVisitor v = new LinearScanVisitor();
-        v.visit(n);
-        intervalList = v.getIntervalList();
-
         // allocation
-        currentAllocations = allocator.allocate(intervalList);
+        currentAllocations = allocator.allocate(n);
 
         // compute which callee-saved registers this function actually uses
         usedCalleeSavedRegs = new ArrayList<>();
@@ -372,8 +366,7 @@ public class Translator extends DepthFirstVisitor {
             String varInReg = varInRegister(r);
             if (varInReg == null)
                 continue;
-            Interval interval = intervalList.getIntervalForVar(varInReg);
-            if (interval != null && interval.getEnd() > originalPos) {
+            if (allocator.getLiveOutAt(originalPos).contains(varInReg)) {
                 IR.token.Identifier stackId = new IR.token.Identifier("caller_saved_" + r.toString());
                 instr.add(new Move_Id_Reg(stackId, r));
                 savedCallerRegs.add(r);
@@ -417,14 +410,12 @@ public class Translator extends DepthFirstVisitor {
             if (!h.isRegister() || !h.getReg().toString().equals(rStr))
                 continue;
             String varName = entry.getKey();
-            Interval interval = intervalList.getIntervalForVar(varName);
-            if (interval != null
-                    && interval.getStart() <= originalPos
-                    && interval.getEnd() >= originalPos) {
+            if (allocator.getLiveOutAt(originalPos).contains(varName)) {
                 return varName;
             }
         }
         return null;
+
     }
 
     Register materializeUse(Home home, Register scratch) {

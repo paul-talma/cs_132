@@ -18,6 +18,7 @@ class LinearScanVisitor extends DepthFirstVisitor {
     int pos = 0; // current instruction position
     Map<String, Integer> labelMap; // label name → instruction position
     IntervalList intervalList = new IntervalList();
+    List<Integer> callPositions; // instruction positions of Call instructions
     String functionName;
 
     // getters & setters
@@ -27,11 +28,11 @@ class LinearScanVisitor extends DepthFirstVisitor {
     }
 
     // visitors
-    @Override
     public void visit(FunctionDeclaration n) {
         pos = 0;
         labelMap = new HashMap<String, Integer>();
         intervalList = new IntervalList();
+        callPositions = new ArrayList<>();
         functionName = n.f1.f0.tokenImage;
 
         // pre-create intervals for formal parameters so their start is always 0
@@ -42,9 +43,17 @@ class LinearScanVisitor extends DepthFirstVisitor {
         }
 
         n.f5.accept(this);
+
+        // second pass: mark any interval that straddles a call site
+        for (int callPos : callPositions) {
+            for (Interval interval : intervalList.getIntervals()) {
+                if (interval.getStart() <= callPos && interval.getEnd() > callPos) {
+                    interval.setCrossesCall(true);
+                }
+            }
+        }
     }
 
-    @Override
     public void visit(IR.syntaxtree.Block n) {
         n.f0.accept(this);
         // treat the return identifier as a use so its interval extends to
@@ -52,25 +61,21 @@ class LinearScanVisitor extends DepthFirstVisitor {
         processUse(name(n.f2));
     }
 
-    @Override
     public void visit(LabelWithColon n) {
         labelMap.put(n.f0.f0.tokenImage, pos);
         pos += 1;
     }
 
-    @Override
     public void visit(SetInteger n) {
         processDef(name(n.f0));
         pos += 1;
     }
 
-    @Override
     public void visit(SetFuncName n) {
         processDef(name(n.f0));
         pos += 1;
     }
 
-    @Override
     public void visit(Add n) {
         processDef(name(n.f0));
         processUse(name(n.f2));
@@ -78,7 +83,6 @@ class LinearScanVisitor extends DepthFirstVisitor {
         pos += 1;
     }
 
-    @Override
     public void visit(Subtract n) {
         processDef(name(n.f0));
         processUse(name(n.f2));
@@ -86,7 +90,6 @@ class LinearScanVisitor extends DepthFirstVisitor {
         pos += 1;
     }
 
-    @Override
     public void visit(Multiply n) {
         processDef(name(n.f0));
         processUse(name(n.f2));
@@ -94,7 +97,6 @@ class LinearScanVisitor extends DepthFirstVisitor {
         pos += 1;
     }
 
-    @Override
     public void visit(LessThan n) {
         processDef(name(n.f0));
         processUse(name(n.f2));
@@ -102,53 +104,45 @@ class LinearScanVisitor extends DepthFirstVisitor {
         pos += 1;
     }
 
-    @Override
     public void visit(Load n) {
         processDef(name(n.f0));
         processUse(name(n.f3));
         pos += 1;
     }
 
-    @Override
     public void visit(Store n) {
         processUse(name(n.f1));
         processUse(name(n.f6));
         pos += 1;
     }
 
-    @Override
     public void visit(Move n) {
         processDef(name(n.f0));
         processUse(name(n.f2));
         pos += 1;
     }
 
-    @Override
     public void visit(Alloc n) {
         processDef(name(n.f0));
         processUse(name(n.f4));
         pos += 1;
     }
 
-    @Override
     public void visit(Print n) {
         processUse(name(n.f2));
         pos += 1;
     }
 
-    @Override
     public void visit(ErrorMessage n) {
         pos += 1;
     }
 
-    @Override
     public void visit(Goto n) {
         String label = n.f1.f0.tokenImage;
         processLabel(labelMap.get(label));
         pos += 1;
     }
 
-    @Override
     public void visit(IfGoto n) {
         processUse(name(n.f1));
         String label = n.f3.f0.tokenImage;
@@ -156,7 +150,6 @@ class LinearScanVisitor extends DepthFirstVisitor {
         pos += 1;
     }
 
-    @Override
     public void visit(Call n) {
         processDef(name(n.f0));
         processUse(name(n.f3));
@@ -165,6 +158,7 @@ class LinearScanVisitor extends DepthFirstVisitor {
                 processUse(name((Identifier) e.nextElement()));
             }
         }
+        callPositions.add(pos);
         pos += 1;
     }
 

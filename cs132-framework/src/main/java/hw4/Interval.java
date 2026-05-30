@@ -6,6 +6,7 @@ class Interval {
     String var;
     int start;
     int end;
+    boolean crossesCall = false;
 
     public Interval() {
     }
@@ -36,5 +37,13 @@ class Interval {
 
     void setEnd(int end) {
         this.end = end;
+    }
+
+    boolean getCrossesCall() {
+        return crossesCall;
+    }
+
+    void setCrossesCall(boolean v) {
+        this.crossesCall = v;
     }
 }
