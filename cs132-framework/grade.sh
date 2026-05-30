@@ -262,7 +262,7 @@ else
     export TIMEOUT_CMD=""
 fi
 
-if [ -n $TIMEOUT_CMD ]; then
+if [ -n "$TIMEOUT_CMD" ]; then
     JAVA_CMD="$TIMEOUT_CMD $TIMEOUT java"
 else
     JAVA_CMD="java"

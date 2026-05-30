@@ -29,13 +29,35 @@ java -cp "build/classes/java/main:lib/cs132.jar" S2SV < testcases/hw4/Factorial.
 
 ## Testcases
 
-`testcases/hw4/` contains pairs of `*.sparrow` (input) and `*.sparrow.out` (expected stdout). Current tests:
-- `Factorial.sparrow` / `Factorial.sparrow.out` — computes 6! = 720
-- `strech.sparrow` / `strech.sparrow.out` — larger stress test, expected output is a list of integers
+`testcases/hw4/` contains pairs of `*.sparrow` (input) and `*.sparrow.out` (expected **runtime** output). The test runner is `test_runners/test_hw4.sh`.
 
 Each `.sparrow.out` file contains the expected printed output of the **fully executed** Sparrow-V program — not the Sparrow-V source text. The translation must be semantics-preserving: running the output Sparrow-V program must produce the same printed values as running the input Sparrow program.
 
-To verify correctness, build the output Sparrow-V program and run it (hw5 infrastructure), or use the reference interpreter provided in `lib/cs132.jar`.
+### Running the Sparrow-V interpreter
+
+```bash
+# Translate Sparrow → Sparrow-V and run:
+java -cp "build/classes/java/main:lib/cs132.jar" S2SV < file.sparrow \
+  | java -jar sparrow_interpreter/sparrow-1.jar sv
+
+# Run Sparrow directly (reference interpreter):
+java -jar sparrow_interpreter/sparrow-1.jar s file.sparrow
+```
+
+### Writing Sparrow test cases
+
+Sparrow syntax rules to remember:
+- **Store/Load use `[base + literal_offset]`** — offset must be a compile-time integer literal and **must be a multiple of 4**. For variable-indexed arrays, compute the address first: `ptr = arr + i; [ptr + 0] = val`
+- **All arithmetic operands must be identifiers** — integer literals cannot appear in arithmetic; assign to a variable first: `zero = 0; neg = zero - i`
+- **Identifiers cannot be register names** (`a2`–`a7`, `s1`–`s11`, `t0`–`t5`)
+- **Call args are identifiers** — the call instruction `r = call f(id...)` looks up each arg in the caller's identifier environment `E`; materialize register values to identifiers before calling
+
+### Getting expected output for a new test
+
+Run the Sparrow reference interpreter to get the correct output, then save it as the `.sparrow.out` file:
+```bash
+java -jar sparrow_interpreter/sparrow-1.jar s testcases/hw4/mytest.sparrow > testcases/hw4/mytest.sparrow.out
+```
 
 ## Architecture
 
@@ -46,12 +68,17 @@ To verify correctness, build the output Sparrow-V program and run it (hw5 infras
 ### Source layout
 ```
 src/main/java/
-  S2SV.java              — hw4 entry point
+  S2SV.java                    — hw4 entry point
   hw4/
-    RegisterAllocator.java  — top-level orchestrator (stub)
-    Graph.java              — directed graph (stub)
-    Node.java               — graph node (stub)
-    notes.md                — design notes
+    Translator.java            — Sparrow → Sparrow-V instruction emitter
+    LinearScanVisitor.java     — computes live intervals per function
+    LinearScanAllocator.java   — linear scan register allocator (two-pool)
+    IntervalList.java          — sorted live-interval container
+    Interval.java              — single variable interval [start, end, crossesCall]
+    Active.java                — active-set for linear scan (sorted by end)
+    Home.java                  — register or identifier home for a variable
+    FunctionAllocation.java    — maps varName → Home for one function
+    Allocator.java             — interface for allocators
   visitor/               — mix of JTB-generated and hand-written visitors
   syntaxtree/            — MiniJava AST nodes (JTB-generated, do not modify)
 src/parse/java/IR/
@@ -89,20 +116,24 @@ Full syntax and operational semantics are in `../handouts/Sparrow-and-Sparrow-V.
 
 ### hw4 pipeline: register allocation
 
-The translation from Sparrow to Sparrow-V proceeds in four stages per function:
+Per-function pipeline in `Translator.visit(FunctionDeclaration)`:
 
-1. **Control Flow Graph (CFG)** — build a directed graph where each node is an instruction and edges represent possible control flow (sequential flow, `goto`, `if0` branches). Use `Graph` / `Node` in `hw4/`.
+1. **Live-interval computation** (`LinearScanVisitor`) — single sequential pass over instructions. Each variable gets interval `[start, end]` where start = first def position and end = last use position. Backward branches (`goto`/`if0` to an earlier label) extend intervals for variables that straddle the branch target. A second pass marks `interval.crossesCall = true` for any variable whose interval spans a call site.
 
-2. **Liveness analysis** — compute `in` and `out` live-variable sets at each CFG node using standard iterative dataflow:
-   - `use[n]` = variables read by instruction n before any definition
-   - `def[n]` = variables defined by instruction n
-   - `out[n]` = ∪ `in[s]` for each successor s
-   - `in[n]` = `use[n]` ∪ (`out[n]` − `def[n]`)
-   Iterate until a fixed point.
+2. **Register allocation** (`LinearScanAllocator`) — standard linear-scan algorithm over intervals sorted by start. Two register pools:
+   - `freeCalleePool` = s1–s11: preferred for cross-call variables (preserved by callee, no per-call save needed)
+   - `freeCallerPool` = t0–t3: preferred for non-cross-call variables (avoids unnecessary callee-save overhead)
+   Falls back to the other pool when the preferred is exhausted. Spills the farthest-reaching active interval when both pools are empty.
 
-3. **Interference graph** — build an undirected graph on variables. Two variables interfere (share an edge) if one is in the `out` set of a node that defines the other. Function parameters are pre-colored to their argument registers.
+3. **Translation** (`Translator`) — emits Sparrow-V instructions:
+   - **Function prologue**: save only the callee-saved registers actually used (`usedCalleeSavedRegs`), then load parameters from identifier environment `E` into their allocated registers.
+   - **Function epilogue**: spill return value to `E`, restore callee-saved registers.
+   - **Call sites**: before each call, materialize args from registers to `E`; save only the caller-saved registers (t0–t3) that hold a variable live past this call site; after the call, restore them (skipping the LHS register).
+   - **Scratch registers**: `t4` and `t5` are never allocated to variables — used as temporaries within a single instruction's translation.
 
-4. **Linear scan register allocation** — assign registers to variables using the linear scan algorithm on live intervals. Variables that cannot be assigned a register are spilled: they are kept in the local variable environment and loaded/stored around each use/def with `r = id` / `id = r` instructions.
+### Callee-save convention
+
+Our generated functions follow: save every callee-saved register in `usedCalleeSavedRegs` at function entry (before any instruction), restore at function exit (after all instructions, before `return`). Identifiers are `callee_saved_<regname>` in the function's local `E`. Since each call gets its own `E`, these don't conflict across call frames.
 
 ### Sparrow AST visitor pattern
 
