@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 
 import IR.syntaxtree.Node;
 import IR.token.FunctionName;
@@ -39,10 +40,11 @@ public class Translator extends DepthFirstVisitor {
             new Register("t1"),
             new Register("t2"),
             new Register("t3")));
-    Register t4 = new Register("t4"); // temp registers
+    Register t4 = new Register("t4"); // temp registers (never allocated to variables)
     Register t5 = new Register("t5");
 
     IntervalList intervalList;
+    int originalPos; // mirrors LinearScanVisitor.pos; used for liveness queries at call sites
     FunctionAllocation currentAllocations;
     List<Register> usedCalleeSavedRegs; // callee-saved registers actually allocated in this function
     List<FunctionDecl> functions = new ArrayList<FunctionDecl>();
@@ -136,6 +138,7 @@ public class Translator extends DepthFirstVisitor {
     public void visit(IR.syntaxtree.LabelWithColon n) {
         String labelName = n.f0.f0.toString();
         instr.add(new LabelInstr(new Label(labelName)));
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.SetInteger n) {
@@ -149,6 +152,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Reg_Integer(t4, rhs));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.SetFuncName n) {
@@ -162,6 +166,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Reg_FuncName(t4, funcName));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Add n) {
@@ -181,6 +186,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Add(op0reg, op0reg, op1reg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Subtract n) {
@@ -200,6 +206,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Subtract(op0reg, op0reg, op1reg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Multiply n) {
@@ -219,6 +226,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Multiply(op0reg, op0reg, op1reg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.LessThan n) {
@@ -238,6 +246,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new LessThan(op0reg, op0reg, op1reg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Load n) {
@@ -255,6 +264,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Load(t5, rhsReg, rhsInt));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t5));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Store n) {
@@ -272,6 +282,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Reg_Id(t5, lhsHome.getId()));
             instr.add(new Store(t5, lhsInt, rhsReg));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Move n) {
@@ -288,6 +299,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Reg_Reg(t5, rhsReg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t5));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Alloc n) {
@@ -304,33 +316,34 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Alloc(t5, rhsReg));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t5));
         }
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Print n) {
         String name = n.f2.f0.toString();
-
         Home home = currentAllocations.get(name);
-
         Register reg = materializeUse(home, t4);
         instr.add(new Print(reg));
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.ErrorMessage n) {
         String msg = n.f2.f0.toString();
         instr.add(new ErrorMessage(msg));
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Goto n) {
         instr.add(new Goto(new Label(n.f1.f0.toString())));
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.IfGoto n) {
         String condName = n.f1.f0.toString();
-
         Home condHome = currentAllocations.get(condName);
-
         Register condReg = materializeUse(condHome, t4);
         instr.add(new IfGoto(condReg, new Label(n.f3.f0.toString())));
+        originalPos++;
     }
 
     public void visit(IR.syntaxtree.Call n) {
@@ -340,56 +353,80 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home funcHome = currentAllocations.get(funcName);
 
-        // get arg list
+        // materialize each call argument from its register to the identifier
+        // environment
         List<IR.token.Identifier> args = getArgs(n.f5);
-
-        // materialize register arguments to stack
-        // TODO: update to use argument registers
         for (IR.token.Identifier arg : args) {
-            String argName = arg.toString();
-            Home argHome = currentAllocations.get(argName);
+            Home argHome = currentAllocations.get(arg.toString());
             if (argHome != null && argHome.isRegister()) {
                 instr.add(new Move_Id_Reg(arg, argHome.getReg()));
             }
         }
 
-        // save caller-saved registers
+        // save only caller-saved registers (t0–t3) holding a variable that is still
+        // live after this call site (interval.end > originalPos).
+        // Callee-saved registers (s1–s11) are preserved across calls by the callee.
+        // Argument registers (a2–a7) are never allocated to variables here.
+        List<IR.token.Register> savedCallerRegs = new ArrayList<>();
         for (IR.token.Register r : callerSavedRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("caller_saved_" + regName);
-            instr.add(new Move_Id_Reg(regStackId, r));
-        }
-        // save argument registers
-        for (IR.token.Register r : argumentRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("argument_saved_" + regName);
-            instr.add(new Move_Id_Reg(regStackId, r));
+            String varInReg = varInRegister(r);
+            if (varInReg == null)
+                continue;
+            Interval interval = intervalList.getIntervalForVar(varInReg);
+            if (interval != null && interval.getEnd() > originalPos) {
+                IR.token.Identifier stackId = new IR.token.Identifier("caller_saved_" + r.toString());
+                instr.add(new Move_Id_Reg(stackId, r));
+                savedCallerRegs.add(r);
+            }
         }
 
-        // call
+        // land result in t5 so restores below cannot overwrite it before we move it
         Register funcReg = materializeUse(funcHome, t4);
+        instr.add(new Call(t5, funcReg, args));
+
+        // restore only the registers we saved; skip the one assigned to the LHS result
+        for (IR.token.Register r : savedCallerRegs) {
+            if (lhsHome.isRegister() && lhsHome.getReg().toString().equals(r.toString()))
+                continue;
+            IR.token.Identifier stackId = new IR.token.Identifier("caller_saved_" + r.toString());
+            instr.add(new Move_Reg_Id(r, stackId));
+        }
+
+        // move call result from t5 into the LHS home
         if (lhsHome.isRegister()) {
-            instr.add(new Call(lhsHome.getReg(), funcReg, args));
+            instr.add(new Move_Reg_Reg(lhsHome.getReg(), t5));
         } else {
-            instr.add(new Call(t5, funcReg, args));
             instr.add(new Move_Id_Reg(lhsHome.getId(), t5));
         }
 
-        // restore caller-saved registers
-        for (IR.token.Register r : callerSavedRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("caller_saved_" + regName);
-            instr.add(new Move_Reg_Id(r, regStackId));
-        }
-        // restore argument registers
-        for (IR.token.Register r : argumentRegisters) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("argument_saved_" + regName);
-            instr.add(new Move_Reg_Id(r, regStackId));
-        }
+        originalPos++;
     }
 
     // helpers
+
+    /**
+     * Returns the name of the variable currently live in register r at originalPos,
+     * or null if no live variable owns r right now.
+     * Restricts to variables whose interval contains originalPos to avoid returning
+     * a dead variable that happened to be allocated to the same register earlier.
+     */
+    private String varInRegister(IR.token.Register r) {
+        String rStr = r.toString();
+        for (Map.Entry<String, Home> entry : currentAllocations.homeOf.entrySet()) {
+            Home h = entry.getValue();
+            if (!h.isRegister() || !h.getReg().toString().equals(rStr))
+                continue;
+            String varName = entry.getKey();
+            Interval interval = intervalList.getIntervalForVar(varName);
+            if (interval != null
+                    && interval.getStart() <= originalPos
+                    && interval.getEnd() >= originalPos) {
+                return varName;
+            }
+        }
+        return null;
+    }
+
     Register materializeUse(Home home, Register scratch) {
         if (home.isRegister())
             return home.getReg();
@@ -408,10 +445,7 @@ public class Translator extends DepthFirstVisitor {
     }
 
     public Program getProgram() {
-        //
         return program;
     }
 
 }
-
-//
