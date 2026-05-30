@@ -4,78 +4,110 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a MiniJava compiler built incrementally across homework assignments (hw1–hw5). The current homework is set in `gradle.properties` (`homework=hw2`). Each homework builds on the last:
+This is a MiniJava compiler built incrementally across homework assignments (hw1–hw5). The current homework is set in `gradle.properties` (`homework=hw3`). Each homework builds on the last:
 - **hw1**: Parser (`Parse.java`) — done
-- **hw2**: Type checker (`Typecheck.java`) — in progress
-- **hw3+**: Code generation phases (not yet started)
+- **hw2**: Type checker (`Typecheck.java`) — done
+- **hw3**: MiniJava → Sparrow code generation (`J2S.java`) — done
+- **hw4**: Sparrow → Sparrow-V via register allocation (`S2SV.java`) — in progress
+- **hw5**: Sparrow-V → RISC-V (not yet started)
 
 ## Build & Test Commands
 
 ```bash
-# Build (uses JAVA_HOME for Gradle, which requires JDK 17+)
-JAVA_HOME=/opt/homebrew/Cellar/openjdk/25.0.2/libexec/openjdk.jdk/Contents/Home gradle classes -Phomework=hw2
+# Build for a specific homework (requires JDK 17+)
+JAVA_HOME=/opt/homebrew/Cellar/openjdk/25.0.2/libexec/openjdk.jdk/Contents/Home gradle classes -Phomework=hw4
 
-# Run all hw2 tests
-./test.sh
+# Run a program via gradle (reads from stdin)
+./gradle_run.sh 4 < testcases/hw4/Factorial.sparrow
 
-# Run a single test (accepts bare name, .java extension optional)
-./test.sh BubbleSort
-./test.sh BubbleSort-error
+# Run manually after building
+java -cp "build/classes/java/main:lib/cs132.jar" S2SV < testcases/hw4/Factorial.sparrow
 
-# Run manually (requires build first)
-java -cp "build/classes/java/main:lib/cs132.jar" Typecheck < testcases/hw2/Basic.java
+# Diff against expected output
+java -cp "build/classes/java/main:lib/cs132.jar" S2SV < testcases/hw4/Factorial.sparrow | diff - testcases/hw4/Factorial.sparrow.out
 ```
 
-Expected output for each test is in a `.out` file alongside the `.java` file. The type checker prints either `Program type checked successfully` or `Type error`.
+## Testcases
 
-**Before submission**: `Typecheck.java` currently has a hardcoded `FileInputStream` for development — switch it back to `System.in`.
+`testcases/hw4/` contains pairs of `*.sparrow` (input) and `*.sparrow.out` (expected stdout). Current tests:
+- `Factorial.sparrow` / `Factorial.sparrow.out` — computes 6! = 720
+- `strech.sparrow` / `strech.sparrow.out` — larger stress test, expected output is a list of integers
+
+Each `.sparrow.out` file contains the expected printed output of the **fully executed** Sparrow-V program — not the Sparrow-V source text. The translation must be semantics-preserving: running the output Sparrow-V program must produce the same printed values as running the input Sparrow program.
+
+To verify correctness, build the output Sparrow-V program and run it (hw5 infrastructure), or use the reference interpreter provided in `lib/cs132.jar`.
 
 ## Architecture
 
 ### Two Java versions in use
 - Gradle build requires JDK 17+ (`/opt/homebrew/Cellar/openjdk/...`)
-- The compiled output runs on JDK 8 (`/Library/Java/JavaVirtualMachines/zulu-8.jdk/...`)
+- The compiled output targets JDK 8 (`/Library/Java/JavaVirtualMachines/zulu-8.jdk/...`)
 
 ### Source layout
-- `src/main/java/Typecheck.java` — entry point
-- `src/main/java/hw2/` — type checker logic (hand-written)
-- `src/main/java/visitor/` — visitors (mix of JTB-generated and hand-written)
-- `src/main/java/syntaxtree/` — AST node classes (JTB-generated, do not modify)
+```
+src/main/java/
+  S2SV.java              — hw4 entry point
+  hw4/
+    RegisterAllocator.java  — top-level orchestrator (stub)
+    Graph.java              — directed graph (stub)
+    Node.java               — graph node (stub)
+    notes.md                — design notes
+  visitor/               — mix of JTB-generated and hand-written visitors
+  syntaxtree/            — MiniJava AST nodes (JTB-generated, do not modify)
+src/parse/java/IR/
+  SparrowParser.java     — Sparrow parser (JTB-generated, do not modify)
+  syntaxtree/            — Sparrow/Sparrow-V AST nodes
+  visitor/               — DepthFirstVisitor base class for Sparrow AST
+```
 
-### Visitor framework (JTB-generated)
-The visitor infrastructure uses the **Generalized Visitor** pattern from JTB 1.3.2. Key base classes in `visitor/`:
-- `GJVoidDepthFirst<A>` — visitor that accepts an argument `A`, returns void (used by hw2 visitors)
-- `GJDepthFirst<R, A>` — visitor that accepts `A`, returns `R`
-- `GJNoArguDepthFirst<R>` — visitor with no argument, returns `R`
+### Entry point
 
-AST nodes (in `syntaxtree/`) store children as positional fields `f0`, `f1`, `f2`, ... (e.g., `ClassDeclaration.f1` is the class name `Identifier`). To navigate the tree, look at the syntaxtree node class to find which `fN` field corresponds to which grammar production.
+`S2SV.java` reads a Sparrow program from stdin, parses it, and calls `RegisterAllocator.allocate()`:
 
-Use `Utils.getIDNameFromIDNode(Identifier n)` to extract a string name from an `Identifier` node.
+```java
+SparrowParser parser = new SparrowParser(System.in);
+IR.syntaxtree.Program program = parser.Program();
+RegisterAllocator allocator = new RegisterAllocator(program);
+allocator.allocate();
+```
 
-### Type checker pipeline (`hw2/TypeChecker.java`)
+`allocate()` must translate and print a valid Sparrow-V program to stdout.
 
-Type checking runs in three phases:
+### Sparrow vs. Sparrow-V
 
-**Phase 1** — `ClassTableBuilderVisitor` (in `visitor/`):
-- Walks `MainClass`, `ClassDeclaration`, `ClassExtendsDeclaration`
-- Populates `ClassTable` with class names and parent relationships
-- Then `ClassTable` validates: all class names unique, no inheritance cycles
+Both languages share the same program/function/block/instruction structure. The key differences:
 
-**Phase 2** — `SymbolTableBuilderVisitor` (in `visitor/`):
-- Walks into each class body to collect fields and methods
-- Tracks `currentClass` and `currentMethod` as it descends
-- Populates `ClassInfo.fields` (via `VarDeclaration`) and `ClassInfo.methods` (via `MethodDeclaration` + `FormalParameter`)
-- Then `ClassTable` validates: unique field names, unique method names, unique param names, no overloads (overriding is allowed only if signatures match exactly)
+| | Sparrow | Sparrow-V |
+|---|---|---|
+| Operands | Identifiers (unlimited) | Registers (fixed set) + identifiers for spills |
+| Register file | None | 23 registers: `a2–a7`, `s1–s11`, `t0–t5` |
+| Extra instructions | — | `id = r` (spill reg to var), `r = id` (load var to reg) |
 
-**Phase 3** — TODO: walk the tree, build per-method symbol tables, type-check statements and expressions.
+Sparrow identifiers exclude the register names (`a2`–`a7`, `s1`–`s11`, `t0`–`t5`). In Sparrow-V, all computation uses registers; identifiers only appear in the spill/restore instructions `id = r` and `r = id`, which move values between the register file and the per-function local variable environment.
 
-### Key data model (`hw2/`)
-- `ClassTable`: `HashMap<String, ClassInfo>` + ordered `classList`. Has `methodType(className, methodName)` which walks up the inheritance chain.
-- `ClassInfo`: name, optional parent, `List<String>` + `Map<String, FieldInfo>` for fields, same pattern for methods.
-- `MethodInfo`: name, return type, ordered param list + param map.
-- `String`: enum with `INT`, `BOOLEAN`, `ARRAY`, `ID` (where `ID` represents user-defined class types).
-- `Utils.getTypeFromTypeString(String)`: maps JTB node class names (e.g. `"IntegerType"`, `"BooleanType"`, `"ArrayType"`) to `String`. Anything else maps to `String.ID`.
-- All type errors extend `TypeException` and are caught at the top level in `Typecheck.main`.
+Full syntax and operational semantics are in `../handouts/Sparrow-and-Sparrow-V.pdf`.
 
-### Testcases
-`testcases/hw2/` contains pairs of `*.java` and `*.java.out`. Files named `*-error.java` are expected to produce `Type error`; the rest produce `Program type checked successfully`.
+### hw4 pipeline: register allocation
+
+The translation from Sparrow to Sparrow-V proceeds in four stages per function:
+
+1. **Control Flow Graph (CFG)** — build a directed graph where each node is an instruction and edges represent possible control flow (sequential flow, `goto`, `if0` branches). Use `Graph` / `Node` in `hw4/`.
+
+2. **Liveness analysis** — compute `in` and `out` live-variable sets at each CFG node using standard iterative dataflow:
+   - `use[n]` = variables read by instruction n before any definition
+   - `def[n]` = variables defined by instruction n
+   - `out[n]` = ∪ `in[s]` for each successor s
+   - `in[n]` = `use[n]` ∪ (`out[n]` − `def[n]`)
+   Iterate until a fixed point.
+
+3. **Interference graph** — build an undirected graph on variables. Two variables interfere (share an edge) if one is in the `out` set of a node that defines the other. Function parameters are pre-colored to their argument registers.
+
+4. **Linear scan register allocation** — assign registers to variables using the linear scan algorithm on live intervals. Variables that cannot be assigned a register are spilled: they are kept in the local variable environment and loaded/stored around each use/def with `r = id` / `id = r` instructions.
+
+### Sparrow AST visitor pattern
+
+Visitors extend `IR.visitor.DepthFirstVisitor` (in `src/parse/java/IR/visitor/`). AST nodes are in `IR.syntaxtree` with positional fields `f0`, `f1`, ... matching the grammar productions. Inspect the node class to find which field corresponds to which grammar symbol.
+
+### Output format
+
+The output must be valid Sparrow-V source text, printed to stdout, that can be fed to a Sparrow-V interpreter. Study `testcases/hw4/*.sparrow.out` for the expected format — note that the `.out` files contain the *runtime output* (printed integers), not the Sparrow-V source. Use the hw3 output (Sparrow source) and a reference Sparrow-V program as format guides.
