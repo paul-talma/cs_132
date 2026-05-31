@@ -305,6 +305,13 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home rhsHome = currentAllocations.get(rhsName);
 
+        // If coalescing assigned both sides the same register, the copy is a no-op.
+        if (lhsHome.isRegister() && rhsHome.isRegister()
+                && lhsHome.getReg().toString().equals(rhsHome.getReg().toString())) {
+            originalPos++;
+            return;
+        }
+
         Register rhsReg = materializeUse(rhsHome, t4);
         if (lhsHome.isRegister()) {
             instr.add(new Move_Reg_Reg(lhsHome.getReg(), rhsReg));

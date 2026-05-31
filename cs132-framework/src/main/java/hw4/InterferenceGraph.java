@@ -70,6 +70,17 @@ class InterferenceGraph {
         return ig;
     }
 
+
+    void removeNode(String v) {
+        Set<String> neighbors = adj.remove(v);
+        if (neighbors != null) {
+            for (String nb : neighbors) {
+                Set<String> nbAdj = adj.get(nb);
+                if (nbAdj != null) nbAdj.remove(v);
+            }
+        }
+    }
+
     // ----- queries -----
 
     Set<String> nodes() {

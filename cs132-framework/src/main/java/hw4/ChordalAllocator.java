@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,9 +21,10 @@ import IR.token.Register;
 //   1. Build CFG            (CFGBuilder)
 //   2. Liveness analysis    (LivenessAnalyzer)
 //   3. Interference graph   (InterferenceGraph.build)
-//   4. MCS ordering         (maxCardinalitySearch)
-//   5. Greedy coloring      (greedyColor)
-//   6. Spill uncolored vars into their identifier environment
+//   4. Coalescing           (coalesceAll)  — merges copy-related variables
+//   5. MCS ordering         (maxCardinalitySearch)
+//   6. Greedy coloring      (greedyColor)  — respects pre-colors from coalescing
+//   7. Spill uncolored vars into their identifier environment
 //
 // Register pools:
 //   calleeRegs  s1–s11  preferred for variables live across calls
@@ -61,7 +63,7 @@ public class ChordalAllocator {
             }
         }
 
-        // Build interference graph (no parameter pre-coloring)
+        // Build interference graph
         InterferenceGraph ig = InterferenceGraph.build(cfg);
 
         // Variables live-out at any call site must survive the call → prefer
@@ -71,15 +73,30 @@ public class ChordalAllocator {
             crossesCall.addAll(liveOut);
         }
 
-        // MCS ordering then greedy coloring
+        // Capture all variables before coalescing removes merged nodes from IG.
+        Set<String> allVars = new LinkedHashSet<>(ig.nodes());
+
+        // Union-find: parent[v] = v initially; after coalescing parent[y] = x
+        // means y was merged into x (x is the representative).
+        Map<String, String> parent = new HashMap<>();
+        for (String v : allVars) parent.put(v, v);
+
+        // Pre-colors assigned by coalescing (representative → register name).
+        Map<String, String> preColor = new HashMap<>();
+        coalesceAll(ig, crossesCall, preColor, parent);
+
+        // MCS ordering then greedy coloring (pre-colored nodes are already fixed)
         List<String> mcsOrder = maxCardinalitySearch(ig);
         verifyChordalOrdering(mcsOrder, ig, n.f1.f0.toString());
-        Map<String, String> coloring = greedyColor(mcsOrder, ig, crossesCall);
+        Map<String, String> coloring = greedyColor(mcsOrder, ig, crossesCall, preColor);
 
-        // Convert coloring to FunctionAllocation (spill uncolored vars)
+        // Build homeOf for ALL original vars via union-find.
+        // Merged vars share the representative's register; spilled vars use their
+        // own identifier so spill slots remain distinct.
         Map<String, Home> homeOf = new LinkedHashMap<>();
-        for (String var : ig.nodes()) {
-            String regName = coloring.get(var);
+        for (String var : allVars) {
+            String rep = find(parent, var);
+            String regName = coloring.get(rep);
             if (regName != null) {
                 homeOf.put(var, new Home(new Register(regName)));
             } else {
@@ -93,7 +110,8 @@ public class ChordalAllocator {
     // Returns true if varName is live at function entry (i.e., used somewhere
     // in the body and needs to be loaded in the prologue).
     public boolean isLiveAtEntry(String varName) {
-        if (cfg == null || cfg.nodes.isEmpty()) return false;
+        if (cfg == null || cfg.nodes.isEmpty())
+            return false;
         return cfg.nodes.get(0).liveIn.contains(varName);
     }
 
@@ -146,17 +164,21 @@ public class ChordalAllocator {
     // ----- Greedy Coloring in reverse MCS order -----
     //
     // Colors are register names. Nodes that cannot be colored are spilled
-    // (left uncolored).
+    // (left uncolored). Pre-colored nodes (from coalescing) are treated as
+    // already assigned and skipped.
     private Map<String, String> greedyColor(List<String> mcsOrder,
             InterferenceGraph ig,
-            Set<String> crossesCall) {
-        Map<String, String> color = new HashMap<>();
+            Set<String> crossesCall,
+            Map<String, String> preColor) {
+        // Seed with pre-colors so neighbor checks see them.
+        Map<String, String> color = new HashMap<>(preColor);
 
         // Process in reverse MCS order
         List<String> reversed = new ArrayList<>(mcsOrder);
         Collections.reverse(reversed);
 
         for (String v : reversed) {
+            if (color.containsKey(v)) continue; // already colored by coalescing
 
             // Gather colors used by already-colored neighbors
             Set<String> usedColors = new HashSet<>();
@@ -185,10 +207,12 @@ public class ChordalAllocator {
         return color;
     }
 
-
-    // Verifies that the reverse of mcsOrder is a perfect elimination ordering (PEO),
-    // which holds iff the interference graph is chordal. For each node v at position i
-    // in the PEO, its neighbors at later positions must form a clique. Prints to stderr
+    // Verifies that the reverse of mcsOrder is a perfect elimination ordering
+    // (PEO),
+    // which holds iff the interference graph is chordal. For each node v at
+    // position i
+    // in the PEO, its neighbors at later positions must form a clique. Prints to
+    // stderr
     // if the graph is not chordal (stdout is reserved for the Sparrow-V output).
     private void verifyChordalOrdering(List<String> mcsOrder, InterferenceGraph ig, String funcName) {
         List<String> peo = new ArrayList<>(mcsOrder);
@@ -202,16 +226,99 @@ public class ChordalAllocator {
             String v = peo.get(i);
             List<String> later = new ArrayList<>();
             for (String nb : ig.neighbors(v))
-                if (pos.get(nb) > i) later.add(nb);
+                if (pos.get(nb) > i)
+                    later.add(nb);
             for (int a = 0; a < later.size(); a++)
                 for (int b = a + 1; b < later.size(); b++)
                     if (!ig.hasEdge(later.get(a), later.get(b))) {
                         System.err.println("NOT CHORDAL: " + funcName +
-                            ": " + v + " not simplicial (missing edge " +
-                            later.get(a) + " -- " + later.get(b) + ")");
+                                ": " + v + " not simplicial (missing edge " +
+                                later.get(a) + " -- " + later.get(b) + ")");
                         return;
                     }
         }
+    }
+
+    // ----- Coalescing -----
+    //
+    // For each copy instruction x := y, if x and y do not interfere and there
+    // exists a register c not used by any already-colored neighbor of x or y,
+    // merge them into a single node (keeping x as representative) with color c.
+    // y is removed from the graph; x absorbs y's edges and becomes the merged node.
+    private void coalesceAll(InterferenceGraph ig,
+                              Set<String> crossesCall,
+                              Map<String, String> preColor,
+                              Map<String, String> parent) {
+        // Collect copy pairs (lhs, rhs) from Move instructions in the CFG.
+        List<String[]> copies = new ArrayList<>();
+        for (ControlFlowNode node : cfg.nodes) {
+            if (node.instr == null) continue;
+            Object choice = node.instr.f0.choice;
+            if (choice instanceof IR.syntaxtree.Move) {
+                IR.syntaxtree.Move m = (IR.syntaxtree.Move) choice;
+                copies.add(new String[]{ m.f0.f0.tokenImage, m.f2.f0.tokenImage });
+            }
+        }
+
+        for (String[] pair : copies) {
+            String x = find(parent, pair[0]);
+            String y = find(parent, pair[1]);
+
+            if (x.equals(y)) continue;             // already the same node
+            if (!ig.nodes().contains(x)) continue;
+            if (!ig.nodes().contains(y)) continue;
+            if (ig.hasEdge(x, y)) continue;        // interfere — cannot coalesce
+
+            // Sx ∪ Sy: colors of already-colored neighbors of x and y.
+            Set<String> usedColors = new HashSet<>();
+            for (String nb : ig.neighbors(x))
+                if (preColor.containsKey(nb)) usedColors.add(preColor.get(nb));
+            for (String nb : ig.neighbors(y))
+                if (preColor.containsKey(nb)) usedColors.add(preColor.get(nb));
+
+            // Determine color c for the merged node.
+            String px = preColor.get(x);
+            String py = preColor.get(y);
+            String chosen;
+            if (px != null && py != null) {
+                if (!px.equals(py)) continue;     // conflicting pre-colors
+                chosen = px;
+            } else if (px != null) {
+                if (usedColors.contains(px)) continue;
+                chosen = px;
+            } else if (py != null) {
+                if (usedColors.contains(py)) continue;
+                chosen = py;
+            } else {
+                boolean crossCall = crossesCall.contains(x) || crossesCall.contains(y);
+                if (crossCall) {
+                    chosen = pickFrom(CALLEE_REG_NAMES, usedColors);
+                    if (chosen == null) chosen = pickFrom(CALLER_REG_NAMES, usedColors);
+                } else {
+                    chosen = pickFrom(CALLER_REG_NAMES, usedColors);
+                    if (chosen == null) chosen = pickFrom(CALLEE_REG_NAMES, usedColors);
+                }
+                if (chosen == null) continue;     // no register available
+            }
+
+            // Merge: add all of y's edges to x, then remove y.
+            // x keeps its existing edges; the merged node is x.
+            for (String nb : new ArrayList<>(ig.neighbors(y))) {
+                if (!nb.equals(x)) ig.addEdge(x, nb);
+            }
+            ig.removeNode(y);
+
+            parent.put(y, x);
+            preColor.put(x, chosen);
+            if (crossesCall.contains(y)) crossesCall.add(x);
+        }
+    }
+
+    // Path-compressed union-find: returns the root representative of v.
+    private String find(Map<String, String> parent, String v) {
+        while (parent.containsKey(v) && !parent.get(v).equals(v))
+            v = parent.get(v);
+        return v;
     }
 
     private static String pickFrom(List<String> pool, Set<String> used) {
