@@ -48,6 +48,7 @@ public class ChordalAllocator {
     // Per-function state, reset on each allocate() call
     private ControlFlowGraph cfg;
     private Map<Integer, Set<String>> liveOutAtCall; // instrIdx → liveOut vars
+    private Map<String, Integer> spillCost;          // varName → spill cost
 
     // ----- public API -----
 
@@ -61,6 +62,16 @@ public class ChordalAllocator {
             if (node.isCall) {
                 liveOutAtCall.put(node.id, new HashSet<>(node.liveOut));
             }
+        }
+
+        // Compute spill cost: weight = 10^loopDepth for each instruction.
+        // Each variable accumulates the weights of all instructions that define or use it.
+        spillCost = new HashMap<>();
+        for (ControlFlowNode node : cfg.nodes) {
+            int weight = 1;
+            for (int i = 0; i < node.loopDepth; i++) weight *= 10;
+            for (String v : node.def) spillCost.merge(v, weight, Integer::sum);
+            for (String v : node.use) spillCost.merge(v, weight, Integer::sum);
         }
 
         // Build interference graph
@@ -136,13 +147,18 @@ public class ChordalAllocator {
         Set<String> processed = new HashSet<>();
 
         while (processed.size() < allVars.size()) {
-            // Pick the unprocessed node with the highest weight (ties: any order)
+            // Pick the unprocessed node with the highest weight.
+            // Tie-break by lowest spill cost: low-cost nodes are picked first by MCS,
+            // so they appear earliest in mcsOrder and are processed last by greedy,
+            // making them the most likely candidates to be spilled.
             String best = null;
             int bestW = -1;
             for (String v : allVars) {
                 if (!processed.contains(v)) {
                     int w = weight.get(v);
-                    if (w > bestW) {
+                    int cost = spillCost.getOrDefault(v, 1);
+                    int bestCost = best == null ? Integer.MAX_VALUE : spillCost.getOrDefault(best, 1);
+                    if (w > bestW || (w == bestW && cost < bestCost)) {
                         bestW = w;
                         best = v;
                     }
@@ -198,6 +214,41 @@ public class ChordalAllocator {
                 chosen = pickFrom(CALLER_REG_NAMES, usedColors);
                 if (chosen == null)
                     chosen = pickFrom(CALLEE_REG_NAMES, usedColors);
+            }
+            if (chosen == null) {
+                // All registers taken. Try to steal from the colored neighbor with the
+                // lowest spill cost whose color is not shared by any other neighbor of v.
+                // Only steal if that neighbor is cheaper to spill than v itself.
+                String stealNode = null;
+                String stealColor = null;
+                int threshold = spillCost.getOrDefault(v, 1);
+
+                for (String nb : ig.neighbors(v)) {
+                    if (preColor.containsKey(nb)) continue; // never steal pre-colored nodes
+                    String c = color.get(nb);
+                    if (c == null) continue;
+                    // Only steal if c is unique among v's neighbors (freeing it gives v a slot).
+                    boolean unique = true;
+                    for (String other : ig.neighbors(v)) {
+                        if (!other.equals(nb) && c.equals(color.get(other))) {
+                            unique = false;
+                            break;
+                        }
+                    }
+                    if (unique) {
+                        int nbCost = spillCost.getOrDefault(nb, 1);
+                        if (nbCost < threshold) {
+                            threshold = nbCost;
+                            stealNode = nb;
+                            stealColor = c;
+                        }
+                    }
+                }
+
+                if (stealNode != null) {
+                    color.remove(stealNode); // stealNode is now spilled
+                    chosen = stealColor;
+                }
             }
             // If chosen == null the variable is spilled (left uncolored)
             if (chosen != null)
@@ -311,6 +362,8 @@ public class ChordalAllocator {
             parent.put(y, x);
             preColor.put(x, chosen);
             if (crossesCall.contains(y)) crossesCall.add(x);
+            // Accumulate y's cost into x so the merged node's cost is correct.
+            spillCost.merge(x, spillCost.getOrDefault(y, 0), Integer::sum);
         }
     }
 

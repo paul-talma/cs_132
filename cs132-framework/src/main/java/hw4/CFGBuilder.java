@@ -1,10 +1,14 @@
 package hw4;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import IR.syntaxtree.*;
 
@@ -84,6 +88,9 @@ class CFGBuilder {
             }
         }
 
+        // Third pass: compute loop depth via natural-loop detection.
+        computeLoopDepths(nodes);
+
         return new ControlFlowGraph(nodes, labelMap, params);
     }
 
@@ -157,6 +164,42 @@ class CFGBuilder {
             node.isCall = true;
         }
         // LabelWithColon, ErrorMessage, Goto: empty def/use
+    }
+
+
+    // For each back edge (src → header, where header.id ≤ src.id), find the
+    // natural loop body via backward BFS from src up to header, and increment
+    // every body node's loopDepth.
+    private static void computeLoopDepths(List<ControlFlowNode> nodes) {
+        for (ControlFlowNode src : nodes) {
+            for (ControlFlowNode tgt : src.succs) {
+                if (tgt.id <= src.id) {
+                    markNaturalLoop(tgt, src);
+                }
+            }
+        }
+    }
+
+    private static void markNaturalLoop(ControlFlowNode header, ControlFlowNode tail) {
+        Set<ControlFlowNode> body = new HashSet<>();
+        body.add(header);
+        Deque<ControlFlowNode> worklist = new ArrayDeque<>();
+        if (!tail.equals(header)) {
+            body.add(tail);
+            worklist.add(tail);
+        }
+        while (!worklist.isEmpty()) {
+            ControlFlowNode n = worklist.poll();
+            for (ControlFlowNode pred : n.preds) {
+                if (!body.contains(pred)) {
+                    body.add(pred);
+                    worklist.add(pred);
+                }
+            }
+        }
+        for (ControlFlowNode n : body) {
+            n.loopDepth++;
+        }
     }
 
     private static void addEdge(ControlFlowNode from, ControlFlowNode to) {

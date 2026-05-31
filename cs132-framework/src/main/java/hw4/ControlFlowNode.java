@@ -23,6 +23,7 @@ class ControlFlowNode {
     Set<String> liveOut = new HashSet<>();
 
     boolean isCall = false;
+    int loopDepth = 0;
 
     ControlFlowNode(int id, Instruction instr) {
         this.id = id;
