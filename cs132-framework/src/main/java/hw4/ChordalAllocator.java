@@ -49,6 +49,7 @@ public class ChordalAllocator {
     private ControlFlowGraph cfg;
     private Map<Integer, Set<String>> liveOutAtCall; // instrIdx → liveOut vars
     private Map<String, Integer> spillCost;          // varName → spill cost
+    private Map<String, String>  devirtMap;            // funcVar → static func name
 
     // ----- public API -----
 
@@ -74,8 +75,14 @@ public class ChordalAllocator {
             for (String v : node.use) spillCost.merge(v, weight, Integer::sum);
         }
 
-        // Build interference graph
+        // Identify function-pointer variables that are always set to the same
+        // static function name and only used as callees → they need no register.
+        buildDevirtMap();
+
+        // Build interference graph, then remove devirt variables: they need no
+        // register allocation and should not consume a color.
         InterferenceGraph ig = InterferenceGraph.build(cfg);
+        for (String v : devirtMap.keySet()) ig.removeNode(v);
 
         // Variables live-out at any call site must survive the call → prefer
         // callee-saved registers so no explicit save/restore is needed.
@@ -106,6 +113,7 @@ public class ChordalAllocator {
         // own identifier so spill slots remain distinct.
         Map<String, Home> homeOf = new LinkedHashMap<>();
         for (String var : allVars) {
+            if (devirtMap.containsKey(var)) continue; // no home — handled at call sites
             String rep = find(parent, var);
             String regName = coloring.get(rep);
             if (regName != null) {
@@ -116,6 +124,13 @@ public class ChordalAllocator {
         }
 
         return new FunctionAllocation(homeOf);
+    }
+
+    // Returns the devirtualization map: funcVar → static function name.
+    // Variables in this map are excluded from register allocation; the Translator
+    // loads their target address directly with Move_Reg_FuncName at each call site.
+    public Map<String, String> getDevirtMap() {
+        return devirtMap != null ? devirtMap : Collections.emptyMap();
     }
 
     // Returns true if varName is live at function entry (i.e., used somewhere
@@ -287,6 +302,64 @@ public class ChordalAllocator {
                                 later.get(a) + " -- " + later.get(b) + ")");
                         return;
                     }
+        }
+    }
+
+    // ----- Devirtualization analysis -----
+    //
+    // A variable qualifies if:
+    //   (a) every definition is a SetFuncName to the same function name, and
+    //   (b) every use is as the callee of a Call instruction (never as an
+    //       argument, operand, or return value).
+    private void buildDevirtMap() {
+        devirtMap = new HashMap<>();
+
+        Map<String, Set<String>> defFuncs     = new HashMap<>(); // var → set of @F names seen
+        Set<String> hasNonFuncDef             = new HashSet<>(); // defined by non-SetFuncName
+        Set<String> hasNonCalleeUse           = new HashSet<>(); // used outside callee position
+
+        for (ControlFlowNode node : cfg.nodes) {
+            if (node.instr == null) {
+                // Synthetic return node: the return variable is a non-callee use.
+                for (String v : node.use) hasNonCalleeUse.add(v);
+                continue;
+            }
+            Object choice = node.instr.f0.choice;
+
+            if (choice instanceof IR.syntaxtree.SetFuncName) {
+                IR.syntaxtree.SetFuncName sfn = (IR.syntaxtree.SetFuncName) choice;
+                String lhs  = sfn.f0.f0.tokenImage;
+                String func = sfn.f3.f0.tokenImage;
+                defFuncs.computeIfAbsent(lhs, k -> new HashSet<>()).add(func);
+
+            } else if (choice instanceof IR.syntaxtree.Call) {
+                IR.syntaxtree.Call c = (IR.syntaxtree.Call) choice;
+                // lhs is defined by Call (not a SetFuncName definition).
+                hasNonFuncDef.add(c.f0.f0.tokenImage);
+                // callee position is a legal use for devirt candidates — skip it.
+                // Args are non-callee uses.
+                if (c.f5.present()) {
+                    for (java.util.Enumeration<IR.syntaxtree.Node> e = c.f5.elements();
+                            e.hasMoreElements();) {
+                        hasNonCalleeUse.add(
+                            ((IR.syntaxtree.Identifier) e.nextElement()).f0.tokenImage);
+                    }
+                }
+            } else {
+                // All other instructions: defs are non-SetFuncName, uses are non-callee.
+                for (String v : node.def) hasNonFuncDef.add(v);
+                for (String v : node.use) hasNonCalleeUse.add(v);
+            }
+        }
+
+        for (Map.Entry<String, Set<String>> entry : defFuncs.entrySet()) {
+            String var  = entry.getKey();
+            Set<String> funcs = entry.getValue();
+            if (funcs.size() == 1
+                    && !hasNonFuncDef.contains(var)
+                    && !hasNonCalleeUse.contains(var)) {
+                devirtMap.put(var, funcs.iterator().next());
+            }
         }
     }
 

@@ -43,6 +43,7 @@ public class Translator extends DepthFirstVisitor {
     Register t4 = new Register("t4"); // temp registers (never allocated to variables)
     Register t5 = new Register("t5");
 
+    Map<String, String> devirtMap; // funcVar → static func name (per function)
     IntervalList intervalList;
     int originalPos; // mirrors LinearScanVisitor.pos; used for liveness queries at call sites
     FunctionAllocation currentAllocations;
@@ -64,6 +65,7 @@ public class Translator extends DepthFirstVisitor {
     public void visit(IR.syntaxtree.FunctionDeclaration n) {
         // allocation
         currentAllocations = allocator.allocate(n);
+        devirtMap = allocator.getDevirtMap();
 
         // compute which callee-saved registers this function actually uses
         usedCalleeSavedRegs = new ArrayList<>();
@@ -170,6 +172,14 @@ public class Translator extends DepthFirstVisitor {
 
     public void visit(IR.syntaxtree.SetFuncName n) {
         String lhsName = n.f0.f0.toString();
+
+        // Devirtualized variable: the address is loaded directly at each call site;
+        // no register or spill slot is allocated for it.
+        if (devirtMap.containsKey(lhsName)) {
+            originalPos++;
+            return;
+        }
+
         Home lhsHome = currentAllocations.get(lhsName);
         FunctionName funcName = new FunctionName(n.f3.f0.toString());
 
@@ -371,7 +381,8 @@ public class Translator extends DepthFirstVisitor {
         String funcName = n.f3.f0.toString();
 
         Home lhsHome = currentAllocations.get(lhsName);
-        Home funcHome = currentAllocations.get(funcName);
+        // Devirt variables have no allocated home; only look up non-devirt ones.
+        Home funcHome = devirtMap.containsKey(funcName) ? null : currentAllocations.get(funcName);
 
         List<IR.token.Identifier> args = getArgs(n.f5);
 
@@ -410,7 +421,14 @@ public class Translator extends DepthFirstVisitor {
         }
 
         // land result in t5 so restores below cannot overwrite it before we move it
-        Register funcReg = materializeUse(funcHome, t4);
+        Register funcReg;
+        if (devirtMap.containsKey(funcName)) {
+            // Devirtualized: load the known function address directly.
+            instr.add(new Move_Reg_FuncName(t4, new FunctionName(devirtMap.get(funcName))));
+            funcReg = t4;
+        } else {
+            funcReg = materializeUse(funcHome, t4);
+        }
         instr.add(new Call(t5, funcReg, overflowArgs));
 
         // restore only the registers we saved; skip the one assigned to the LHS result
