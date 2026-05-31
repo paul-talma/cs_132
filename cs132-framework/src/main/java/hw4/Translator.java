@@ -15,7 +15,7 @@ import sparrowv.*;
 
 public class Translator extends DepthFirstVisitor {
     // single allocator object for all functions
-    ChordalAllocator allocator;
+    FunctionAllocator allocator;
     List<Register> argumentRegisters = new ArrayList<>(Arrays.asList(
             new Register("a2"),
             new Register("a3"),
@@ -53,8 +53,8 @@ public class Translator extends DepthFirstVisitor {
 
     Program program;
 
-    public Translator() {
-        allocator = new ChordalAllocator();
+    public Translator(FunctionAllocator allocator) {
+        this.allocator = allocator;
     }
 
     public void visit(IR.syntaxtree.Program n) {
@@ -93,38 +93,45 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Id_Reg(regStackId, r));
         }
 
-        // Load params from argument registers (a2–a7) for the first 6 params;
-        // load from E for any overflow params (7th and beyond).
         List<IR.token.Identifier> args = getArgs(n.f3);
-        for (int i = 0; i < args.size(); i++) {
-            IR.token.Identifier param = args.get(i);
-            if (!allocator.isLiveAtEntry(param.toString()))
-                continue;
-            Home paramHome = currentAllocations.get(param.toString());
-            if (paramHome == null)
-                continue;
-            if (i < argumentRegisters.size()) {
-                IR.token.Register argReg = argumentRegisters.get(i);
-                if (paramHome.isRegister()) {
-                    instr.add(new Move_Reg_Reg(paramHome.getReg(), argReg));
+        if (Config.ARG_REGS) {
+            // Load params from argument registers (a2–a7) for the first 6 params;
+            // load from E for any overflow params (7th and beyond).
+            for (int i = 0; i < args.size(); i++) {
+                IR.token.Identifier param = args.get(i);
+                if (!allocator.isLiveAtEntry(param.toString()))
+                    continue;
+                Home paramHome = currentAllocations.get(param.toString());
+                if (paramHome == null)
+                    continue;
+                if (i < argumentRegisters.size()) {
+                    IR.token.Register argReg = argumentRegisters.get(i);
+                    if (paramHome.isRegister()) {
+                        instr.add(new Move_Reg_Reg(paramHome.getReg(), argReg));
+                    } else {
+                        instr.add(new Move_Id_Reg(paramHome.getId(), argReg));
+                    }
                 } else {
-                    instr.add(new Move_Id_Reg(paramHome.getId(), argReg));
-                }
-            } else {
-                // overflow param: still passed via E
-                if (paramHome.isRegister()) {
-                    instr.add(new Move_Reg_Id(paramHome.getReg(), param));
+                    if (paramHome.isRegister())
+                        instr.add(new Move_Reg_Id(paramHome.getReg(), param));
                 }
             }
+            List<IR.token.Identifier> overflowParams = args.size() > argumentRegisters.size()
+                    ? args.subList(argumentRegisters.size(), args.size())
+                    : new ArrayList<>();
+            Block block = getBlock(n.f5);
+            functions.add(new FunctionDecl(functionName, overflowParams, block));
+        } else {
+            // Original convention: load every register-homed param from its E identifier.
+            for (IR.token.Identifier param : args) {
+                if (!allocator.isLiveAtEntry(param.toString())) continue;
+                Home paramHome = currentAllocations.get(param.toString());
+                if (paramHome != null && paramHome.isRegister())
+                    instr.add(new Move_Reg_Id(paramHome.getReg(), param));
+            }
+            Block block = getBlock(n.f5);
+            functions.add(new FunctionDecl(functionName, args, block));
         }
-
-        // Only overflow params (7th+) remain in the formal parameter list.
-        List<IR.token.Identifier> overflowParams = args.size() > argumentRegisters.size()
-                ? args.subList(argumentRegisters.size(), args.size())
-                : new ArrayList<>();
-
-        Block block = getBlock(n.f5);
-        functions.add(new FunctionDecl(functionName, overflowParams, block));
     }
 
     public Block getBlock(IR.syntaxtree.Block b) {
@@ -399,24 +406,33 @@ public class Translator extends DepthFirstVisitor {
             }
         }
 
-        // Load first 6 args into argument registers a2–a7.
-        // Overflow args (7th+) are materialized to E as before.
-        List<IR.token.Identifier> overflowArgs = new ArrayList<>();
-        for (int i = 0; i < args.size(); i++) {
-            IR.token.Identifier arg = args.get(i);
-            Home argHome = currentAllocations.get(arg.toString());
-            if (i < argumentRegisters.size()) {
-                IR.token.Register argReg = argumentRegisters.get(i);
-                if (argHome != null && argHome.isRegister()) {
-                    instr.add(new Move_Reg_Reg(argReg, argHome.getReg()));
+        // Load args: into a2–a7 when ARG_REGS is on, into E identifiers otherwise.
+        List<IR.token.Identifier> overflowArgs;
+        if (Config.ARG_REGS) {
+            overflowArgs = new ArrayList<>();
+            for (int i = 0; i < args.size(); i++) {
+                IR.token.Identifier arg = args.get(i);
+                Home argHome = currentAllocations.get(arg.toString());
+                if (i < argumentRegisters.size()) {
+                    IR.token.Register argReg = argumentRegisters.get(i);
+                    if (argHome != null && argHome.isRegister()) {
+                        instr.add(new Move_Reg_Reg(argReg, argHome.getReg()));
+                    } else {
+                        instr.add(new Move_Reg_Id(argReg, arg));
+                    }
                 } else {
-                    instr.add(new Move_Reg_Id(argReg, arg));
+                    overflowArgs.add(arg);
+                    if (argHome != null && argHome.isRegister())
+                        instr.add(new Move_Id_Reg(arg, argHome.getReg()));
                 }
-            } else {
-                overflowArgs.add(arg);
-                if (argHome != null && argHome.isRegister()) {
+            }
+        } else {
+            // Original convention: materialize all args to E identifiers.
+            overflowArgs = new ArrayList<>(args);
+            for (IR.token.Identifier arg : args) {
+                Home argHome = currentAllocations.get(arg.toString());
+                if (argHome != null && argHome.isRegister())
                     instr.add(new Move_Id_Reg(arg, argHome.getReg()));
-                }
             }
         }
 
