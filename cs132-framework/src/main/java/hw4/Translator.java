@@ -91,18 +91,38 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Id_Reg(regStackId, r));
         }
 
-        // load params into their allocated registers (skip dead params)
+        // Load params from argument registers (a2–a7) for the first 6 params;
+        // load from E for any overflow params (7th and beyond).
         List<IR.token.Identifier> args = getArgs(n.f3);
-        for (IR.token.Identifier param : args) {
-            if (!allocator.isLiveAtEntry(param.toString())) continue;
+        for (int i = 0; i < args.size(); i++) {
+            IR.token.Identifier param = args.get(i);
+            if (!allocator.isLiveAtEntry(param.toString()))
+                continue;
             Home paramHome = currentAllocations.get(param.toString());
-            if (paramHome != null && paramHome.isRegister()) {
-                instr.add(new Move_Reg_Id(paramHome.getReg(), param));
+            if (paramHome == null)
+                continue;
+            if (i < argumentRegisters.size()) {
+                IR.token.Register argReg = argumentRegisters.get(i);
+                if (paramHome.isRegister()) {
+                    instr.add(new Move_Reg_Reg(paramHome.getReg(), argReg));
+                } else {
+                    instr.add(new Move_Id_Reg(paramHome.getId(), argReg));
+                }
+            } else {
+                // overflow param: still passed via E
+                if (paramHome.isRegister()) {
+                    instr.add(new Move_Reg_Id(paramHome.getReg(), param));
+                }
             }
         }
 
+        // Only overflow params (7th+) remain in the formal parameter list.
+        List<IR.token.Identifier> overflowParams = args.size() > argumentRegisters.size()
+                ? args.subList(argumentRegisters.size(), args.size())
+                : new ArrayList<>();
+
         Block block = getBlock(n.f5);
-        functions.add(new FunctionDecl(functionName, args, block));
+        functions.add(new FunctionDecl(functionName, overflowParams, block));
     }
 
     public Block getBlock(IR.syntaxtree.Block b) {
@@ -346,20 +366,9 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home funcHome = currentAllocations.get(funcName);
 
-        // materialize each call argument from its register to the identifier
-        // environment
         List<IR.token.Identifier> args = getArgs(n.f5);
-        for (IR.token.Identifier arg : args) {
-            Home argHome = currentAllocations.get(arg.toString());
-            if (argHome != null && argHome.isRegister()) {
-                instr.add(new Move_Id_Reg(arg, argHome.getReg()));
-            }
-        }
 
-        // save only caller-saved registers (t0–t3) holding a variable that is still
-        // live after this call site (interval.end > originalPos).
-        // Callee-saved registers (s1–s11) are preserved across calls by the callee.
-        // Argument registers (a2–a7) are never allocated to variables here.
+        // Save live caller-saved registers (t0–t3) to E before the call.
         List<IR.token.Register> savedCallerRegs = new ArrayList<>();
         for (IR.token.Register r : callerSavedRegisters) {
             String varInReg = varInRegister(r);
@@ -372,9 +381,30 @@ public class Translator extends DepthFirstVisitor {
             }
         }
 
+        // Load first 6 args into argument registers a2–a7.
+        // Overflow args (7th+) are materialized to E as before.
+        List<IR.token.Identifier> overflowArgs = new ArrayList<>();
+        for (int i = 0; i < args.size(); i++) {
+            IR.token.Identifier arg = args.get(i);
+            Home argHome = currentAllocations.get(arg.toString());
+            if (i < argumentRegisters.size()) {
+                IR.token.Register argReg = argumentRegisters.get(i);
+                if (argHome != null && argHome.isRegister()) {
+                    instr.add(new Move_Reg_Reg(argReg, argHome.getReg()));
+                } else {
+                    instr.add(new Move_Reg_Id(argReg, arg));
+                }
+            } else {
+                overflowArgs.add(arg);
+                if (argHome != null && argHome.isRegister()) {
+                    instr.add(new Move_Id_Reg(arg, argHome.getReg()));
+                }
+            }
+        }
+
         // land result in t5 so restores below cannot overwrite it before we move it
         Register funcReg = materializeUse(funcHome, t4);
-        instr.add(new Call(t5, funcReg, args));
+        instr.add(new Call(t5, funcReg, overflowArgs));
 
         // restore only the registers we saved; skip the one assigned to the LHS result
         for (IR.token.Register r : savedCallerRegs) {
