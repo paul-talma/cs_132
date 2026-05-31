@@ -73,6 +73,7 @@ public class ChordalAllocator {
 
         // MCS ordering then greedy coloring
         List<String> mcsOrder = maxCardinalitySearch(ig);
+        verifyChordalOrdering(mcsOrder, ig, n.f1.f0.toString());
         Map<String, String> coloring = greedyColor(mcsOrder, ig, crossesCall);
 
         // Convert coloring to FunctionAllocation (spill uncolored vars)
@@ -182,6 +183,35 @@ public class ChordalAllocator {
         }
 
         return color;
+    }
+
+
+    // Verifies that the reverse of mcsOrder is a perfect elimination ordering (PEO),
+    // which holds iff the interference graph is chordal. For each node v at position i
+    // in the PEO, its neighbors at later positions must form a clique. Prints to stderr
+    // if the graph is not chordal (stdout is reserved for the Sparrow-V output).
+    private void verifyChordalOrdering(List<String> mcsOrder, InterferenceGraph ig, String funcName) {
+        List<String> peo = new ArrayList<>(mcsOrder);
+        Collections.reverse(peo);
+
+        Map<String, Integer> pos = new HashMap<>();
+        for (int i = 0; i < peo.size(); i++)
+            pos.put(peo.get(i), i);
+
+        for (int i = 0; i < peo.size(); i++) {
+            String v = peo.get(i);
+            List<String> later = new ArrayList<>();
+            for (String nb : ig.neighbors(v))
+                if (pos.get(nb) > i) later.add(nb);
+            for (int a = 0; a < later.size(); a++)
+                for (int b = a + 1; b < later.size(); b++)
+                    if (!ig.hasEdge(later.get(a), later.get(b))) {
+                        System.err.println("NOT CHORDAL: " + funcName +
+                            ": " + v + " not simplicial (missing edge " +
+                            later.get(a) + " -- " + later.get(b) + ")");
+                        return;
+                    }
+        }
     }
 
     private static String pickFrom(List<String> pool, Set<String> used) {
