@@ -53,8 +53,6 @@ public class Translator extends DepthFirstVisitor {
     Program program;
 
     public Translator() {
-        // allocator = new LinearScanAllocator(calleeSavedRegisters,
-        // callerSavedRegisters);
         allocator = new ChordalAllocator();
     }
 
@@ -93,9 +91,10 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Id_Reg(regStackId, r));
         }
 
-        // load params into their allocated registers
+        // load params into their allocated registers (skip dead params)
         List<IR.token.Identifier> args = getArgs(n.f3);
         for (IR.token.Identifier param : args) {
+            if (!allocator.isLiveAtEntry(param.toString())) continue;
             Home paramHome = currentAllocations.get(param.toString());
             if (paramHome != null && paramHome.isRegister()) {
                 instr.add(new Move_Reg_Id(paramHome.getReg(), param));
@@ -177,8 +176,8 @@ public class Translator extends DepthFirstVisitor {
         if (lhsHome.isRegister()) {
             instr.add(new Add(lhsHome.getReg(), op0reg, op1reg));
         } else {
-            instr.add(new Add(op0reg, op0reg, op1reg));
-            instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
+            instr.add(new Add(t4, op0reg, op1reg));
+            instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
         originalPos++;
     }

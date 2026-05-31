@@ -89,6 +89,13 @@ public class ChordalAllocator {
         return new FunctionAllocation(homeOf);
     }
 
+    // Returns true if varName is live at function entry (i.e., used somewhere
+    // in the body and needs to be loaded in the prologue).
+    public boolean isLiveAtEntry(String varName) {
+        if (cfg == null || cfg.nodes.isEmpty()) return false;
+        return cfg.nodes.get(0).liveIn.contains(varName);
+    }
+
     // Returns the set of variables live after the call at instruction index
     // instrIdx, or an empty set if instrIdx is not a call site.
     public Set<String> getLiveOutAt(int instrIdx) {
