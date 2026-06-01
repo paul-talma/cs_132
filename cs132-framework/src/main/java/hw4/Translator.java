@@ -124,7 +124,8 @@ public class Translator extends DepthFirstVisitor {
         } else {
             // Original convention: load every register-homed param from its E identifier.
             for (IR.token.Identifier param : args) {
-                if (!allocator.isLiveAtEntry(param.toString())) continue;
+                if (!allocator.isLiveAtEntry(param.toString()))
+                    continue;
                 Home paramHome = currentAllocations.get(param.toString());
                 if (paramHome != null && paramHome.isRegister())
                     instr.add(new Move_Reg_Id(paramHome.getReg(), param));
@@ -233,8 +234,8 @@ public class Translator extends DepthFirstVisitor {
         if (lhsHome.isRegister()) {
             instr.add(new Subtract(lhsHome.getReg(), op0reg, op1reg));
         } else {
-            instr.add(new Subtract(op0reg, op0reg, op1reg));
-            instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
+            instr.add(new Subtract(t4, op0reg, op1reg));
+            instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
         originalPos++;
     }
@@ -253,8 +254,8 @@ public class Translator extends DepthFirstVisitor {
         if (lhsHome.isRegister()) {
             instr.add(new Multiply(lhsHome.getReg(), op0reg, op1reg));
         } else {
-            instr.add(new Multiply(op0reg, op0reg, op1reg));
-            instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
+            instr.add(new Multiply(t4, op0reg, op1reg));
+            instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
         originalPos++;
     }
@@ -273,8 +274,8 @@ public class Translator extends DepthFirstVisitor {
         if (lhsHome.isRegister()) {
             instr.add(new LessThan(lhsHome.getReg(), op0reg, op1reg));
         } else {
-            instr.add(new LessThan(op0reg, op0reg, op1reg));
-            instr.add(new Move_Id_Reg(lhsHome.getId(), op0reg));
+            instr.add(new LessThan(t4, op0reg, op1reg));
+            instr.add(new Move_Id_Reg(lhsHome.getId(), t4));
         }
         originalPos++;
     }
