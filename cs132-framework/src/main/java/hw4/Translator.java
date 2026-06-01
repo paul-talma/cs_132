@@ -68,11 +68,16 @@ public class Translator extends DepthFirstVisitor {
         devirtMap = allocator.getDevirtMap();
 
         // compute which callee-saved registers this function actually uses
+        // Use a seen-set to avoid duplicate saves when multiple variables share
+        // the same register via non-overlapping intervals.
         usedCalleeSavedRegs = new ArrayList<>();
+        java.util.Set<String> seenCallee = new java.util.LinkedHashSet<>();
         for (Home h : currentAllocations.homeOf.values()) {
             if (!h.isRegister())
                 continue;
             String regName = h.getReg().toString();
+            if (!seenCallee.add(regName))
+                continue;
             for (IR.token.Register cs : calleeSavedRegisters) {
                 if (cs.toString().equals(regName)) {
                     usedCalleeSavedRegs.add(cs);
@@ -406,16 +411,16 @@ public class Translator extends DepthFirstVisitor {
         List<IR.token.Identifier> args = getArgs(n.f5);
 
         // Save live caller-saved registers (t0–t3) to E before the call.
+        // Skip saving if the only live variable in the register is lhsName: that
+        // variable is defined BY this call and has no pre-call value to preserve.
         List<IR.token.Register> savedCallerRegs = new ArrayList<>();
         for (IR.token.Register r : callerSavedRegisters) {
             String varInReg = varInRegister(r);
-            if (varInReg == null)
+            if (varInReg == null || varInReg.equals(lhsName))
                 continue;
-            if (allocator.getLiveOutAt(originalPos).contains(varInReg)) {
-                IR.token.Identifier stackId = new IR.token.Identifier("caller_saved_" + r.toString());
-                instr.add(new Move_Id_Reg(stackId, r));
-                savedCallerRegs.add(r);
-            }
+            IR.token.Identifier stackId = new IR.token.Identifier("caller_saved_" + r.toString());
+            instr.add(new Move_Id_Reg(stackId, r));
+            savedCallerRegs.add(r);
         }
 
         // Load args: into a2–a7 when ARG_REGS is on, into E identifiers otherwise.
