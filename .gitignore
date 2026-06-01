@@ -116,3 +116,12 @@ Temporary Items
 
 CLAUDE.md
 experimentation/
+
+cs132-framework/results/
+cs132-framework/testcases/
+cs132-framework/test_runners/
+cs132-framework/.vscode/
+cs132-framework/.zed/
+slides/lecture-slides.pdf
+notes
+midterm

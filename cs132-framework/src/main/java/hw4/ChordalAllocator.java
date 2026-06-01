@@ -38,7 +38,7 @@ import IR.token.Register;
 //
 // The allocator also records, per call-site instruction index, which variables
 // are live-out at that point.  Translator uses this for caller-save logic.
-public class ChordalAllocator implements FunctionAllocator {
+public class ChordalAllocator {
 
     static final List<String> CALLEE_REG_NAMES = Arrays.asList(
             "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11");
@@ -56,7 +56,7 @@ public class ChordalAllocator implements FunctionAllocator {
     public FunctionAllocation allocate(FunctionDeclaration n) {
         cfg = CFGBuilder.build(n);
         LivenessAnalyzer.analyze(cfg);
-        if (Config.REMAT) ConstantAnalyzer.analyze(cfg);
+        ConstantAnalyzer.analyze(cfg);
 
         // Collect call-site liveness before building the interference graph
         liveOutAtCall = new HashMap<>();
@@ -70,22 +70,17 @@ public class ChordalAllocator implements FunctionAllocator {
         // Each variable accumulates the weights of all instructions that define or use it.
         // When SPILL_COST is off, use a uniform cost of 1 for all variables so that
         // MCS tie-breaking and color stealing both become no-ops.
-        if (Config.SPILL_COST) {
-            spillCost = new HashMap<>();
-            for (ControlFlowNode node : cfg.nodes) {
-                int weight = 1;
-                for (int i = 0; i < node.loopDepth; i++) weight *= 10;
-                for (String v : node.def) spillCost.merge(v, weight, Integer::sum);
-                for (String v : node.use) spillCost.merge(v, weight, Integer::sum);
-            }
-        } else {
-            spillCost = new HashMap<>(); // uniform cost; must be mutable for coalesceAll
+        spillCost = new HashMap<>();
+        for (ControlFlowNode node : cfg.nodes) {
+            int weight = 1;
+            for (int i = 0; i < node.loopDepth; i++) weight *= 10;
+            for (String v : node.def) spillCost.merge(v, weight, Integer::sum);
+            for (String v : node.use) spillCost.merge(v, weight, Integer::sum);
         }
 
         // Identify function-pointer variables that are always set to the same
         // static function name and only used as callees → they need no register.
-        if (Config.DEVIRT) buildDevirtMap();
-        else devirtMap = Collections.emptyMap();
+        buildDevirtMap();
 
         // Build interference graph, then remove devirt variables: they need no
         // register allocation and should not consume a color.
@@ -109,7 +104,7 @@ public class ChordalAllocator implements FunctionAllocator {
 
         // Pre-colors assigned by coalescing (representative → register name).
         Map<String, String> preColor = new HashMap<>();
-        if (Config.COALESCING) coalesceAll(ig, crossesCall, preColor, parent);
+        coalesceAll(ig, crossesCall, preColor, parent);
 
         // MCS ordering then greedy coloring (pre-colored nodes are already fixed)
         List<String> mcsOrder = maxCardinalitySearch(ig);
@@ -158,15 +153,14 @@ public class ChordalAllocator implements FunctionAllocator {
 
     // Returns true if the instruction at instrIdx is reachable from the entry.
     public boolean isReachable(int instrIdx) {
-        if (!Config.DCE || cfg == null) return true;
-        return cfg.reachable.contains(instrIdx);
+        return cfg == null || cfg.reachable.contains(instrIdx);
     }
 
     // Returns the statically known value of var immediately before the instruction
     // at instrIdx: an Integer for a constant, a String for a function name, or null
     // if the value is not statically known.
     public Object getRematerialValue(int instrIdx, String var) {
-        if (!Config.REMAT || cfg == null) return null;
+        if (cfg == null) return null;
         ControlFlowNode node = cfg.nodes.get(instrIdx);
         if (node == null || node.knownIn == null) return null;
         return node.knownIn.get(var);
