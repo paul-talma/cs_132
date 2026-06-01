@@ -220,8 +220,8 @@ public class Translator extends DepthFirstVisitor {
         Home op0home = currentAllocations.get(op0Name);
         Home op1home = currentAllocations.get(op1Name);
 
-        Register op0reg = materializeUse(op0home, t4);
-        Register op1reg = materializeUse(op1home, t5);
+        Register op0reg = materializeUse(op0home, t4, op0Name);
+        Register op1reg = materializeUse(op1home, t5, op1Name);
         if (lhsHome.isRegister()) {
             instr.add(new Add(lhsHome.getReg(), op0reg, op1reg));
         } else {
@@ -240,8 +240,8 @@ public class Translator extends DepthFirstVisitor {
         Home op0home = currentAllocations.get(op0Name);
         Home op1home = currentAllocations.get(op1Name);
 
-        Register op0reg = materializeUse(op0home, t4);
-        Register op1reg = materializeUse(op1home, t5);
+        Register op0reg = materializeUse(op0home, t4, op0Name);
+        Register op1reg = materializeUse(op1home, t5, op1Name);
         if (lhsHome.isRegister()) {
             instr.add(new Subtract(lhsHome.getReg(), op0reg, op1reg));
         } else {
@@ -260,8 +260,8 @@ public class Translator extends DepthFirstVisitor {
         Home op0home = currentAllocations.get(op0Name);
         Home op1home = currentAllocations.get(op1Name);
 
-        Register op0reg = materializeUse(op0home, t4);
-        Register op1reg = materializeUse(op1home, t5);
+        Register op0reg = materializeUse(op0home, t4, op0Name);
+        Register op1reg = materializeUse(op1home, t5, op1Name);
         if (lhsHome.isRegister()) {
             instr.add(new Multiply(lhsHome.getReg(), op0reg, op1reg));
         } else {
@@ -280,8 +280,8 @@ public class Translator extends DepthFirstVisitor {
         Home op0home = currentAllocations.get(op0Name);
         Home op1home = currentAllocations.get(op1Name);
 
-        Register op0reg = materializeUse(op0home, t4);
-        Register op1reg = materializeUse(op1home, t5);
+        Register op0reg = materializeUse(op0home, t4, op0Name);
+        Register op1reg = materializeUse(op1home, t5, op1Name);
         if (lhsHome.isRegister()) {
             instr.add(new LessThan(lhsHome.getReg(), op0reg, op1reg));
         } else {
@@ -299,7 +299,7 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home rhsHome = currentAllocations.get(rhsName);
 
-        Register rhsReg = materializeUse(rhsHome, t4);
+        Register rhsReg = materializeUse(rhsHome, t4, rhsName);
         if (lhsHome.isRegister()) {
             instr.add(new Load(lhsHome.getReg(), rhsReg, rhsInt));
         } else {
@@ -317,7 +317,7 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home rhsHome = currentAllocations.get(rhsName);
 
-        Register rhsReg = materializeUse(rhsHome, t4);
+        Register rhsReg = materializeUse(rhsHome, t4, rhsName);
         if (lhsHome.isRegister()) {
             instr.add(new Store(lhsHome.getReg(), lhsInt, rhsReg));
         } else {
@@ -341,7 +341,7 @@ public class Translator extends DepthFirstVisitor {
             return;
         }
 
-        Register rhsReg = materializeUse(rhsHome, t4);
+        Register rhsReg = materializeUse(rhsHome, t4, rhsName);
         if (lhsHome.isRegister()) {
             instr.add(new Move_Reg_Reg(lhsHome.getReg(), rhsReg));
         } else {
@@ -358,7 +358,7 @@ public class Translator extends DepthFirstVisitor {
         Home lhsHome = currentAllocations.get(lhsName);
         Home rhsHome = currentAllocations.get(rhsName);
 
-        Register rhsReg = materializeUse(rhsHome, t4);
+        Register rhsReg = materializeUse(rhsHome, t4, rhsName);
         if (lhsHome.isRegister()) {
             instr.add(new Alloc(lhsHome.getReg(), rhsReg));
         } else {
@@ -371,7 +371,7 @@ public class Translator extends DepthFirstVisitor {
     public void visit(IR.syntaxtree.Print n) {
         String name = n.f2.f0.toString();
         Home home = currentAllocations.get(name);
-        Register reg = materializeUse(home, t4);
+        Register reg = materializeUse(home, t4, name);
         instr.add(new Print(reg));
         originalPos++;
     }
@@ -390,7 +390,7 @@ public class Translator extends DepthFirstVisitor {
     public void visit(IR.syntaxtree.IfGoto n) {
         String condName = n.f1.f0.toString();
         Home condHome = currentAllocations.get(condName);
-        Register condReg = materializeUse(condHome, t4);
+        Register condReg = materializeUse(condHome, t4, condName);
         instr.add(new IfGoto(condReg, new Label(n.f3.f0.toString())));
         originalPos++;
     }
@@ -455,7 +455,7 @@ public class Translator extends DepthFirstVisitor {
             instr.add(new Move_Reg_FuncName(t4, new FunctionName(devirtMap.get(funcName))));
             funcReg = t4;
         } else {
-            funcReg = materializeUse(funcHome, t4);
+            funcReg = materializeUse(funcHome, t4, funcName);
         }
         instr.add(new Call(t5, funcReg, overflowArgs));
 
@@ -500,9 +500,18 @@ public class Translator extends DepthFirstVisitor {
 
     }
 
-    Register materializeUse(Home home, Register scratch) {
+    Register materializeUse(Home home, Register scratch, String varName) {
         if (home.isRegister())
             return home.getReg();
+        Object known = allocator.getRematerialValue(originalPos, varName);
+        if (known instanceof Integer) {
+            instr.add(new Move_Reg_Integer(scratch, (Integer) known));
+            return scratch;
+        }
+        if (known instanceof String) {
+            instr.add(new Move_Reg_FuncName(scratch, new FunctionName((String) known)));
+            return scratch;
+        }
         instr.add(new Move_Reg_Id(scratch, home.getId()));
         return scratch;
     }

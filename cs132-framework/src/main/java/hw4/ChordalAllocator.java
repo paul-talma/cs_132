@@ -56,6 +56,7 @@ public class ChordalAllocator implements FunctionAllocator {
     public FunctionAllocation allocate(FunctionDeclaration n) {
         cfg = CFGBuilder.build(n);
         LivenessAnalyzer.analyze(cfg);
+        if (Config.REMAT) ConstantAnalyzer.analyze(cfg);
 
         // Collect call-site liveness before building the interference graph
         liveOutAtCall = new HashMap<>();
@@ -159,6 +160,16 @@ public class ChordalAllocator implements FunctionAllocator {
     public boolean isReachable(int instrIdx) {
         if (!Config.DCE || cfg == null) return true;
         return cfg.reachable.contains(instrIdx);
+    }
+
+    // Returns the statically known value of var immediately before the instruction
+    // at instrIdx: an Integer for a constant, a String for a function name, or null
+    // if the value is not statically known.
+    public Object getRematerialValue(int instrIdx, String var) {
+        if (!Config.REMAT || cfg == null) return null;
+        ControlFlowNode node = cfg.nodes.get(instrIdx);
+        if (node == null || node.knownIn == null) return null;
+        return node.knownIn.get(var);
     }
 
     // ----- Maximum Cardinality Search -----

@@ -14,4 +14,5 @@ public interface FunctionAllocator {
     Set<String> getLiveOutAt(int instrIdx);
     Map<String, String> getDevirtMap();
     boolean isReachable(int instrIdx);
+    Object getRematerialValue(int instrIdx, String var);
 }

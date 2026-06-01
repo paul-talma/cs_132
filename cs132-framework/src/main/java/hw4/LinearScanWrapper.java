@@ -70,4 +70,10 @@ public class LinearScanWrapper implements FunctionAllocator {
     public boolean isReachable(int instrIdx) {
         return true;
     }
+
+    // Linear scan has no constant analysis; rematerialization is not performed.
+    @Override
+    public Object getRematerialValue(int instrIdx, String var) {
+        return null;
+    }
 }

@@ -10,4 +10,5 @@ public class Config {
     public static boolean SPILL_COST = true; // loop-depth spill cost heuristic
     public static boolean DEVIRT = true; // devirtualization of static calls
     public static boolean DCE = true; // dead code elimination (unreachable block removal)
+    public static boolean REMAT = true; // rematerialize cheap spilled constants/funcnames
 }

@@ -20,6 +20,8 @@ public class S2SV {
                 hw4.Config.DEVIRT = false;
             if (arg.equals("--no-dce"))
                 hw4.Config.DCE = false;
+            if (arg.equals("--no-remat"))
+                hw4.Config.REMAT = false;
         }
 
         hw4.FunctionAllocator allocator = hw4.Config.CHORDAL

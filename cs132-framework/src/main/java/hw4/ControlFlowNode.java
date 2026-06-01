@@ -1,7 +1,9 @@
 package hw4;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 import IR.syntaxtree.Instruction;
@@ -24,6 +26,7 @@ class ControlFlowNode {
 
     boolean isCall = false;
     int loopDepth = 0;
+    Map<String, Object> knownIn = null; // known constant/funcname values before this instruction
 
     ControlFlowNode(int id, Instruction instr) {
         this.id = id;
