@@ -52,6 +52,7 @@ public class Translator extends DepthFirstVisitor {
     List<Instruction> instr;
 
     Program program;
+    boolean isMain; // true while translating the program entry point
 
     public Translator(FunctionAllocator allocator) {
         this.allocator = allocator;
@@ -63,6 +64,7 @@ public class Translator extends DepthFirstVisitor {
     }
 
     public void visit(IR.syntaxtree.FunctionDeclaration n) {
+        isMain = functions.isEmpty(); // first function is the program entry point
         // allocation
         currentAllocations = allocator.allocate(n);
         devirtMap = allocator.getDevirtMap();
@@ -92,10 +94,13 @@ public class Translator extends DepthFirstVisitor {
         originalPos = 0;
 
         // save only the callee-saved registers actually used in this function
-        for (IR.token.Register r : usedCalleeSavedRegs) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
-            instr.add(new Move_Id_Reg(regStackId, r));
+        // (skipped for the program entry point: no caller expects them preserved)
+        if (!isMain) {
+            for (IR.token.Register r : usedCalleeSavedRegs) {
+                String regName = r.toString();
+                IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
+                instr.add(new Move_Id_Reg(regStackId, r));
+            }
         }
 
         List<IR.token.Identifier> args = getArgs(n.f3);
@@ -154,10 +159,13 @@ public class Translator extends DepthFirstVisitor {
         }
 
         // restore only the callee-saved registers we saved at entry
-        for (IR.token.Register r : usedCalleeSavedRegs) {
-            String regName = r.toString();
-            IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
-            instr.add(new Move_Reg_Id(r, regStackId));
+        // (skipped for the program entry point: nothing to restore to)
+        if (!isMain) {
+            for (IR.token.Register r : usedCalleeSavedRegs) {
+                String regName = r.toString();
+                IR.token.Identifier regStackId = new IR.token.Identifier("callee_saved_" + regName);
+                instr.add(new Move_Reg_Id(r, regStackId));
+            }
         }
 
         return new Block(instr, returnId);
