@@ -158,6 +158,17 @@ public class Translator extends DepthFirstVisitor {
         return new Block(instr, returnId);
     }
 
+    // Single reachability gate for every instruction in the function body.
+    // Dead instructions are skipped (no code emitted) but originalPos is still
+    // incremented so liveness queries at live call sites remain correct.
+    public void visit(IR.syntaxtree.Instruction n) {
+        if (!allocator.isReachable(originalPos)) {
+            originalPos++;
+            return;
+        }
+        n.f0.accept(this);
+    }
+
     public void visit(IR.syntaxtree.LabelWithColon n) {
         String labelName = n.f0.f0.toString();
         instr.add(new LabelInstr(new Label(labelName)));

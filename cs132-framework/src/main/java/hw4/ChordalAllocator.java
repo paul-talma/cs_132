@@ -155,6 +155,12 @@ public class ChordalAllocator implements FunctionAllocator {
         return s != null ? s : Collections.emptySet();
     }
 
+    // Returns true if the instruction at instrIdx is reachable from the entry.
+    public boolean isReachable(int instrIdx) {
+        if (!Config.DCE || cfg == null) return true;
+        return cfg.reachable.contains(instrIdx);
+    }
+
     // ----- Maximum Cardinality Search -----
     //
     // Produces an ordering of all nodes such that greedy coloring in reverse

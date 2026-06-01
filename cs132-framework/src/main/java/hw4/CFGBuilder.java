@@ -91,7 +91,21 @@ class CFGBuilder {
         // Third pass: compute loop depth via natural-loop detection.
         computeLoopDepths(nodes);
 
-        return new ControlFlowGraph(nodes, labelMap, params);
+        // Fourth pass: BFS reachability from the entry node.
+        Set<Integer> reachable = new HashSet<>();
+        Deque<ControlFlowNode> bfsQueue = new ArrayDeque<>();
+        bfsQueue.add(nodes.get(0));
+        reachable.add(0);
+        while (!bfsQueue.isEmpty()) {
+            ControlFlowNode cur = bfsQueue.poll();
+            for (ControlFlowNode succ : cur.succs) {
+                if (reachable.add(succ.id)) {
+                    bfsQueue.add(succ);
+                }
+            }
+        }
+
+        return new ControlFlowGraph(nodes, labelMap, params, reachable);
     }
 
     // Populate def/use sets for one instruction node.

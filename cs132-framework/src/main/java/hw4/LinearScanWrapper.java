@@ -64,4 +64,10 @@ public class LinearScanWrapper implements FunctionAllocator {
     public Map<String, String> getDevirtMap() {
         return Collections.emptyMap();
     }
+
+    // Linear scan has no CFG, so all positions are considered reachable.
+    @Override
+    public boolean isReachable(int instrIdx) {
+        return true;
+    }
 }

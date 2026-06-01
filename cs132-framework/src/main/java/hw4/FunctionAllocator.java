@@ -13,4 +13,5 @@ public interface FunctionAllocator {
     boolean isLiveAtEntry(String varName);
     Set<String> getLiveOutAt(int instrIdx);
     Map<String, String> getDevirtMap();
+    boolean isReachable(int instrIdx);
 }
